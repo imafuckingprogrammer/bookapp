@@ -12,17 +12,10 @@ import { Textarea } from '@/components/ui/textarea';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
-import { Heart, Edit3, Share2, MessageCircle, Eye, EyeOff, ArrowDownAZ, ArrowUpAZ } from 'lucide-react';
+import { Heart, Edit3, Share2, MessageCircle, Eye, EyeOff, ArrowDownAZ, ArrowUpAZ, ThumbsUp } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { CommentCard } from '@/components/comments/CommentCard';
 import { useToast } from '@/hooks/use-toast';
-
-// export async function generateStaticParams() {
-//   return mockBookLists.map((list) => ({
-//     id: list.id,
-//   }));
-// }
-// Removing generateStaticParams as this page is now dynamic client-side for interactions
 
 export default function ListDetailsPage({ params }: { params: { id:string } }) {
   const { toast } = useToast();
@@ -32,10 +25,12 @@ export default function ListDetailsPage({ params }: { params: { id:string } }) {
   const [sortedBooks, setSortedBooks] = useState<Book[]>([]);
 
   useEffect(() => {
+    // Simulate fetching list data
     const foundList = mockBookLists.find((l) => l.id === params.id);
     if (foundList) {
-      setListData(JSON.parse(JSON.stringify(foundList))); // Deep copy for local state
-      setSortedBooks(foundList.books);
+      // Deep copy to allow local modifications without affecting mock source
+      setListData(JSON.parse(JSON.stringify(foundList))); 
+      setSortedBooks(JSON.parse(JSON.stringify(foundList.books)));
     }
     setIsLoading(false);
   }, [params.id]);
@@ -51,13 +46,27 @@ export default function ListDetailsPage({ params }: { params: { id:string } }) {
   const timeAgo = formatDistanceToNow(new Date(listData.updatedAt), { addSuffix: true });
 
   const handleLikeList = () => {
-    setListData(prev => prev ? { ...prev, likes: (prev.likes || 0) + 1, updatedAt: new Date().toISOString() } : null);
-    toast({ title: "List Liked!"});
+    setListData(prev => {
+      if (!prev) return null;
+      const newLikedState = !prev.isLikedByCurrentUser;
+      const newLikesCount = (prev.likes || 0) + (newLikedState ? 1 : -1);
+      toast({ title: newLikedState ? "List Liked!" : "List Unliked" });
+      return { 
+        ...prev, 
+        likes: newLikesCount < 0 ? 0 : newLikesCount, // Ensure likes don't go negative
+        isLikedByCurrentUser: newLikedState, 
+        updatedAt: new Date().toISOString() 
+      };
+    });
   };
 
   const handleTogglePrivacy = () => {
-    setListData(prev => prev ? { ...prev, isPublic: !prev.isPublic, updatedAt: new Date().toISOString() } : null);
-    toast({ title: `List is now ${listData.isPublic ? 'Private' : 'Public'}` });
+    setListData(prev => {
+      if (!prev) return null;
+      const newIsPublic = !prev.isPublic;
+      toast({ title: `List is now ${newIsPublic ? 'Public' : 'Private'}` });
+      return { ...prev, isPublic: newIsPublic, updatedAt: new Date().toISOString() };
+    });
   };
   
   const handleAddComment = (e: FormEvent) => {
@@ -65,70 +74,65 @@ export default function ListDetailsPage({ params }: { params: { id:string } }) {
     if (!commentText.trim() || !listData) return;
     const newComment: Comment = {
       id: `comment-${Date.now()}-${listData.id}`,
-      userId: 'currentUser', // Placeholder
-      userName: 'Current User', // Placeholder
+      userId: 'u1', // Placeholder for current user
+      userName: 'Alice Wonderland', // Placeholder
       userAvatarUrl: 'https://placehold.co/40x40.png',
       text: commentText,
       createdAt: new Date().toISOString(),
       likes: 0,
+      isLikedByCurrentUser: false,
       replies: []
     };
-    setListData(prev => prev ? { ...prev, comments: [...(prev.comments || []), newComment], updatedAt: new Date().toISOString() } : null);
+    setListData(prev => prev ? { ...prev, comments: [newComment, ...(prev.comments || [])], updatedAt: new Date().toISOString() } : null);
     setCommentText('');
     toast({ title: "Comment posted!"});
   };
 
-  const handleLikeComment = (commentId: string) => {
+  const handleLikeOrReplyComment = (
+    commentId: string, 
+    action: 'like' | 'reply', 
+    replyText?: string,
+    isReply?: boolean, // Is the target comment itself a reply?
+    parentCommentId?: string // If target is a reply, this is its parent's ID
+  ) => {
     setListData(prev => {
       if (!prev || !prev.comments) return prev;
+
+      const updateRecursive = (comments: Comment[]): Comment[] => {
+        return comments.map(c => {
+          if (c.id === commentId) { // Found the target comment/reply
+            if (action === 'like') {
+              const newLikedState = !c.isLikedByCurrentUser;
+              const newLikesCount = (c.likes || 0) + (newLikedState ? 1 : -1);
+              return { ...c, likes: newLikesCount < 0 ? 0 : newLikesCount, isLikedByCurrentUser: newLikedState };
+            } else if (action === 'reply' && replyText) {
+              const newReply: Comment = {
+                id: `reply-${Date.now()}-${commentId}`,
+                userId: 'u1', userName: 'Alice Wonderland', userAvatarUrl: 'https://placehold.co/40x40.png',
+                text: replyText, createdAt: new Date().toISOString(), likes: 0, isLikedByCurrentUser: false, replies: []
+              };
+              return { ...c, replies: [newReply, ...(c.replies || [])] };
+            }
+          }
+          // If not the target, check its replies
+          if (c.replies && c.replies.length > 0) {
+            return { ...c, replies: updateRecursive(c.replies) };
+          }
+          return c;
+        });
+      };
       
-      const updateLikesRecursive = (comments: Comment[]): Comment[] => {
-        return comments.map(c => {
-          if (c.id === commentId) {
-            return { ...c, likes: (c.likes || 0) + 1 };
-          }
-          if (c.replies) {
-            return { ...c, replies: updateLikesRecursive(c.replies) };
-          }
-          return c;
-        });
-      };
-      return { ...prev, comments: updateLikesRecursive(prev.comments) };
+      const updatedComments = updateRecursive(prev.comments);
+      return { ...prev, comments: updatedComments, updatedAt: new Date().toISOString() };
     });
+
+    if (action === 'like') toast({ title: "Interaction updated!" });
+    if (action === 'reply') toast({ title: "Reply posted!" });
   };
 
-  const handleAddReply = (commentId: string, replyText: string) => {
-    setListData(prev => {
-      if (!prev || !prev.comments) return prev;
-
-      const addReplyRecursive = (comments: Comment[]): Comment[] => {
-        return comments.map(c => {
-          if (c.id === commentId) {
-            const newReply: Comment = {
-              id: `reply-${Date.now()}-${commentId}`,
-              userId: 'currentUser', // Placeholder
-              userName: 'Current User', // Placeholder
-              userAvatarUrl: 'https://placehold.co/40x40.png',
-              text: replyText,
-              createdAt: new Date().toISOString(),
-              likes: 0,
-              replies: []
-            };
-            return { ...c, replies: [...(c.replies || []), newReply] };
-          }
-          if (c.replies) {
-            return { ...c, replies: addReplyRecursive(c.replies) };
-          }
-          return c;
-        });
-      };
-      return { ...prev, comments: addReplyRecursive(prev.comments)};
-    });
-     toast({ title: "Reply posted!"});
-  };
 
   const sortBooksByTitle = (ascending = true) => {
-    const sorted = [...listData.books].sort((a, b) => {
+    const sorted = [...sortedBooks].sort((a, b) => {
       if (ascending) return a.title.localeCompare(b.title);
       return b.title.localeCompare(a.title);
     });
@@ -145,7 +149,7 @@ export default function ListDetailsPage({ params }: { params: { id:string } }) {
             <div className="flex items-center space-x-2 text-md text-muted-foreground mb-1">
               <Avatar className="h-7 w-7">
                  <AvatarImage src={listData.userAvatarUrl || `https://placehold.co/40x40.png`} alt={listData.userName}  />
-                 <AvatarFallback>{listData.userName.substring(0,1)}</AvatarFallback>
+                 <AvatarFallback>{listData.userName?.substring(0,1)?.toUpperCase() || 'L'}</AvatarFallback>
               </Avatar>
               <span>Created by {listData.userName}</span>
               <span>&bull;</span>
@@ -157,13 +161,16 @@ export default function ListDetailsPage({ params }: { params: { id:string } }) {
             </div>
           </div>
           <div className="flex items-center space-x-2 mt-4 md:mt-0">
-            <Button variant="outline" className="transition-transform hover:scale-105" onClick={handleLikeList}>
-              <Heart className="mr-2 h-4 w-4" /> Like ({listData.likes || 0})
+            <Button 
+                variant="outline" 
+                className={`transition-transform hover:scale-105 ${listData.isLikedByCurrentUser ? 'text-primary border-primary' : ''}`} 
+                onClick={handleLikeList}
+            >
+              <ThumbsUp className={`mr-2 h-4 w-4 ${listData.isLikedByCurrentUser ? 'fill-current' : ''}`} /> Like ({listData.likes || 0})
             </Button>
-            {/* Basic Edit: Toggle Privacy */}
             <div className="flex items-center space-x-2 border p-2 rounded-md">
                 <Switch id="privacy-toggle" checked={listData.isPublic} onCheckedChange={handleTogglePrivacy} />
-                <Label htmlFor="privacy-toggle" className="text-sm">Public</Label>
+                <Label htmlFor="privacy-toggle" className="text-sm cursor-pointer">Public</Label>
             </div>
             <Button variant="outline" size="icon" className="transition-transform hover:scale-105">
               <Share2 className="h-4 w-4" />
@@ -224,8 +231,8 @@ export default function ListDetailsPage({ params }: { params: { id:string } }) {
               <CommentCard 
                 key={comment.id} 
                 comment={comment} 
-                onLikeComment={handleLikeComment}
-                onAddReply={handleAddReply}
+                onLikeComment={(commentId, isReply, parentCommentId) => handleLikeOrReplyComment(commentId, 'like', undefined, isReply, parentCommentId)}
+                onAddReply={(commentId, text, isReplyToReply, parentCommentId) => handleLikeOrReplyComment(commentId, 'reply', text, isReplyToReply, parentCommentId)}
               />
             ))
           ) : (
