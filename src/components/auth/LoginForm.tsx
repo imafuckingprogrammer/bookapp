@@ -1,3 +1,4 @@
+
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -6,9 +7,14 @@ import { z } from "zod";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
-import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
+import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import Link from "next/link";
-import { LogIn } from "lucide-react";
+import { LogIn, Loader2 } from "lucide-react";
+import { useAuth } from "@/contexts/AuthContext";
+import { useState } from "react";
+import { useToast } from "@/hooks/use-toast";
+import { useRouter } from "next/navigation";
+
 
 const loginFormSchema = z.object({
   email: z.string().email("Invalid email address."),
@@ -18,6 +24,12 @@ const loginFormSchema = z.object({
 type LoginFormValues = z.infer<typeof loginFormSchema>;
 
 export function LoginForm() {
+  const { login } = useAuth();
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const { toast } = useToast();
+  const router = useRouter();
+
   const form = useForm<LoginFormValues>({
     resolver: zodResolver(loginFormSchema),
     defaultValues: {
@@ -26,10 +38,21 @@ export function LoginForm() {
     },
   });
 
-  function onSubmit(data: LoginFormValues) {
-    console.log("Login data:", data);
-    // Placeholder for actual login logic
-    alert("Login functionality not implemented yet.");
+  async function onSubmit(data: LoginFormValues) {
+    setIsLoading(true);
+    setError(null);
+    try {
+      await login(data.email, data.password);
+      toast({ title: "Logged In!", description: "Welcome back." });
+      // router.push("/feed"); // AuthContext effect will handle redirect
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Login failed. Please check your credentials.";
+      setError(message);
+      console.error("Login failed:", err);
+      toast({ title: "Login Failed", description: message, variant: "destructive" });
+    } finally {
+      setIsLoading(false);
+    }
   }
 
   return (
@@ -44,6 +67,7 @@ export function LoginForm() {
       <Form {...form}>
         <form onSubmit={form.handleSubmit(onSubmit)}>
           <CardContent className="space-y-4">
+            {error && <p className="text-sm text-destructive text-center">{error}</p>}
             <FormField
               control={form.control}
               name="email"
@@ -66,13 +90,19 @@ export function LoginForm() {
                   <FormControl>
                     <Input type="password" placeholder="••••••••" {...field} />
                   </FormControl>
+                  <FormDescription className="text-right">
+                    <Link href="/forgot-password" passHref className="text-xs text-muted-foreground hover:text-primary hover:underline">
+                        Forgot password?
+                    </Link>
+                  </FormDescription>
                   <FormMessage />
                 </FormItem>
               )}
             />
           </CardContent>
           <CardFooter className="flex flex-col space-y-4">
-            <Button type="submit" className="w-full transition-transform hover:scale-105">
+            <Button type="submit" className="w-full transition-transform hover:scale-105" disabled={isLoading}>
+              {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               Login
             </Button>
             <p className="text-sm text-center text-muted-foreground">

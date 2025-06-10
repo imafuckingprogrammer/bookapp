@@ -1,73 +1,161 @@
 
+// Represents an authenticated user from your auth provider (e.g., Supabase Auth)
+export type AuthUser = {
+  id: string; // Typically the UUID from the auth provider
+  email?: string;
+  // Add any other relevant fields from your auth provider
+};
+
+// Represents a user profile stored in your database
+export type UserProfile = {
+  id: string; // Foreign key to auth.users.id or a public user ID
+  username: string;
+  avatar_url?: string;
+  bio?: string;
+  created_at: string; // ISO date string
+  name?: string; // Optional full name
+  follower_count?: number;
+  following_count?: number;
+  is_current_user_following?: boolean; // Is the logged-in user following this profile?
+};
+
 export type Book = {
-  id: string;
+  id: string; // Your internal book ID (could be UUID)
+  google_book_id?: string;
+  open_library_id?: string;
   title: string;
-  author: string;
-  coverImageUrl: string;
-  summary: string;
-  averageRating?: number; // Overall average rating
+  author: string; // Simplified to a single string, could be array on backend
+  coverImageUrl?: string;
+  summary?: string;
+  averageRating?: number; // App-wide average rating, fetched from backend
   genres?: string[];
   publicationYear?: number;
   isbn?: string;
 
-  // User-specific properties (simulated)
-  userRating?: number; // Current user's rating for this book
-  isRead?: boolean; // Has the current user read this book?
-  readDate?: string; // ISO date string when the user read it
-  isWantToRead?: boolean; // Is this book on the current user's watchlist?
-  isLikedByCurrentUser?: boolean; // Has the current user liked this book?
-  isOwned?: boolean; // Does the current user own this book?
+  // These fields would typically be fetched based on the current authenticated user
+  // and are made optional here.
+  currentUserRating?: number;
+  currentUserIsRead?: boolean;
+  currentUserReadDate?: string;
+  currentUserIsOnWatchlist?: boolean;
+  currentUserIsLiked?: boolean;
+  currentUserIsOwned?: boolean;
 };
 
 export type Review = {
   id: string;
-  userId: string;
-  userName: string;
-  userAvatarUrl?: string;
-  bookId: string;
-  rating: number; // User's rating associated with this review
-  reviewText?: string;
-  createdAt: string; // ISO date string
-  likes?: number;
-  comments?: Comment[];
-  isLikedByCurrentUser?: boolean; // Has the current logged-in user liked this review?
+  user_id: string;
+  user?: UserProfile; // Populated by backend join
+  book_id: string;
+  book?: Pick<Book, 'id' | 'title' | 'coverImageUrl'>; // Populated by backend join
+  rating: number;
+  review_text?: string;
+  created_at: string; // ISO date string
+  updated_at: string; // ISO date string
+  like_count?: number;
+  comment_count?: number;
+  current_user_has_liked?: boolean;
 };
 
 export type Comment = {
   id: string;
-  userId: string;
-  userName: string;
-  userAvatarUrl?: string;
+  user_id: string;
+  user?: UserProfile; // Populated by backend join
+  // entity_id: string; // ID of the item being commented on (review, list)
+  // entity_type: 'review' | 'list_collection';
+  review_id?: string; // If comment is on a review
+  list_collection_id?: string; // If comment is on a list
+  parent_comment_id?: string; // For threaded replies
   text: string;
-  createdAt: string; // ISO date string
-  likes?: number;
-  replies?: Comment[];
-  isLikedByCurrentUser?: boolean; // Has the current logged-in user liked this comment?
+  created_at: string; // ISO date string
+  updated_at: string; // ISO date string
+  like_count?: number;
+  current_user_has_liked?: boolean;
+  replies?: Comment[]; // Nested replies, often fetched separately or limited
 };
 
-export type BookList = {
+export type ListCollection = {
   id: string;
-  userId: string;
-  userName: string; // Creator's name
-  userAvatarUrl?: string; // Added for consistency
+  user_id: string;
+  user?: UserProfile; // Populated by backend join
   name: string;
   description?: string;
-  books: Book[];
-  createdAt: string; // ISO date string
-  updatedAt: string; // ISO date string
-  likes?: number;
-  isPublic: boolean;
-  comments?: Comment[];
-  isLikedByCurrentUser?: boolean; // Has the current logged-in user liked this list?
+  is_public: boolean;
+  created_at: string; // ISO date string
+  updated_at: string; // ISO date string
+  item_count?: number;
+  like_count?: number;
+  current_user_has_liked?: boolean;
+  // books array might be fetched separately or as part of a detailed view
+  books?: Book[]; // For client-side convenience after fetching list items
+  cover_images?: string[]; // For list card display
 };
 
-// Represents an entry in the user's reading diary
-export type DiaryEntry = {
-  bookId: string;
-  bookTitle: string; // Denormalized for easier display
-  bookCoverImageUrl?: string; // Denormalized
-  readDate: string; // ISO date string
-  rating?: number; // Rating given at the time of logging
-  reviewId?: string; // Optional link to a full review
-  logNotes?: string; // Short notes for the diary entry, if not a full review
+export type ListItem = {
+  id: string;
+  list_collection_id: string;
+  book_id: string;
+  book?: Book; // Populated by backend join
+  added_at: string;
+  sort_order?: number;
 };
+
+// Represents an entry in the user's reading diary or interaction log
+export type UserBookInteraction = {
+  user_id: string;
+  book_id: string;
+  book?: Book; // Populated from join
+  is_read?: boolean;
+  read_date?: string; // ISO date string
+  rating?: number;
+  is_owned?: boolean;
+  is_on_watchlist?: boolean;
+  is_liked?: boolean; // User liked the book itself
+  log_notes?: string; // Short notes for diary, separate from full review
+  review_id?: string; // Link to a full review if one exists
+  created_at: string;
+  updated_at: string;
+};
+
+export type Follow = {
+  follower_id: string;
+  following_id: string;
+  created_at: string;
+};
+
+export type NotificationType = 
+  | 'new_follower' 
+  | 'like_review' 
+  | 'comment_review' 
+  | 'reply_comment'
+  | 'like_list'
+  | 'comment_list';
+  // ... add more as needed
+
+export type Notification = {
+  id: string;
+  user_id: string; // The user who receives the notification
+  actor_id: string; // The user who performed the action
+  actor?: UserProfile; // Populated by backend
+  type: NotificationType;
+  entity_id?: string; // ID of the review, list, comment, or user being followed
+  entity_type?: 'review' | 'list_collection' | 'comment' | 'user';
+  entity_parent_id?: string; // e.g., if entity is a comment, parent could be review_id
+  entity_parent_title?: string; // e.g., title of the book/list the review/comment belongs to
+  read: boolean;
+  created_at: string;
+};
+
+// For API responses that include pagination
+export type PaginatedResponse<T> = {
+  items: T[];
+  total: number;
+  page: number;
+  pageSize: number;
+  totalPages: number;
+};
+
+// Generic type for form submission status
+export type FormStatus = 'idle' | 'submitting' | 'success' | 'error';
+export type FormError = { field?: string; message: string } | null;
+

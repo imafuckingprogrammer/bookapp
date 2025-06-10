@@ -1,8 +1,8 @@
 
 "use client";
 
-import { useState, useEffect, type Dispatch, type SetStateAction } from 'react';
-import type { Book, Review } from '@/types';
+import { useState, useEffect } from 'react';
+import type { Book, Review, UserBookInteraction } from '@/types';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { StarRating } from '@/components/ui/StarRating';
@@ -11,7 +11,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { CalendarIcon, Save } from "lucide-react";
+import { CalendarIcon, Save, Loader2 } from "lucide-react";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
@@ -23,47 +23,61 @@ interface LogBookDialogProps {
   onLogSaved: (logDetails: {
     rating?: number;
     isRead?: boolean;
-    readDate?: string;
+    readDate?: string; // ISO string
     reviewText?: string;
-  }) => void;
-  existingReview?: Review | null; // Pass existing review to edit
+  }) => Promise<void>; // Make it async
+  existingReview?: Review | null;
+  initialInteraction: Partial<UserBookInteraction>; // Pass current interaction state
 }
 
-export function LogBookDialog({ book, isOpen, onOpenChange, onLogSaved, existingReview }: LogBookDialogProps) {
+export function LogBookDialog({ book, isOpen, onOpenChange, onLogSaved, existingReview, initialInteraction }: LogBookDialogProps) {
   const { toast } = useToast();
-  const [rating, setRating] = useState<number | undefined>(existingReview?.rating ?? book.userRating);
-  const [isRead, setIsRead] = useState<boolean>(existingReview ? true : book.isRead || false);
+  const [rating, setRating] = useState<number | undefined>(initialInteraction.rating ?? existingReview?.rating);
+  const [isRead, setIsRead] = useState<boolean>(initialInteraction.is_read ?? !!existingReview);
   const [readDate, setReadDate] = useState<Date | undefined>(
-    existingReview?.createdAt ? new Date(existingReview.createdAt) : (book.readDate ? new Date(book.readDate) : undefined)
+    initialInteraction.read_date ? new Date(initialInteraction.read_date) : (existingReview?.created_at ? new Date(existingReview.created_at) : undefined)
   );
-  const [reviewText, setReviewText] = useState<string>(existingReview?.reviewText || '');
+  const [reviewText, setReviewText] = useState<string>(existingReview?.review_text || '');
+  const [isSaving, setIsSaving] = useState(false);
   
   useEffect(() => {
-    // Reset form when dialog opens or book changes, or existing review changes
-    setRating(existingReview?.rating ?? book.userRating);
-    setIsRead(existingReview ? true : book.isRead || false);
-    setReadDate(existingReview?.createdAt ? new Date(existingReview.createdAt) : (book.readDate ? new Date(book.readDate) : undefined));
-    setReviewText(existingReview?.reviewText || '');
-  }, [isOpen, book, existingReview]);
+    // Reset form when dialog opens or relevant props change
+    setRating(initialInteraction.rating ?? existingReview?.rating);
+    setIsRead(initialInteraction.is_read ?? !!existingReview); // A review implies it's read
+    setReadDate(initialInteraction.read_date ? new Date(initialInteraction.read_date) : (existingReview?.created_at ? new Date(existingReview.created_at) : undefined));
+    setReviewText(existingReview?.review_text || '');
+  }, [isOpen, book, existingReview, initialInteraction]);
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (isRead && !readDate) {
       toast({ title: "Date Required", description: "Please select a date for when you read the book.", variant: "destructive" });
       return;
     }
-    if (isRead && !rating) {
+    if (isRead && !rating) { // Rating is required if marked as read
         toast({ title: "Rating Required", description: "Please provide a rating if you've read the book.", variant: "destructive" });
         return;
     }
-
-    onLogSaved({
-      rating: rating,
-      isRead: isRead,
-      readDate: isRead && readDate ? readDate.toISOString() : undefined,
-      reviewText: reviewText,
-    });
-    toast({ title: "Log Updated!", description: `Your activity for "${book.title}" has been saved.` });
-    onOpenChange(false);
+    // If not read, but rating or review text exists, it implies they are logging current thoughts, not a "read" entry
+    // However, our current logic ties reviews to "read" status. This might need refinement.
+    // For now, if not isRead, we clear rating and reviewText for the log.
+    // The parent component (BookDetailsPage) will handle what to do with existing reviews if isRead is unchecked.
+    
+    setIsSaving(true);
+    try {
+        await onLogSaved({
+            rating: isRead ? rating : undefined, // Only save rating if read
+            isRead: isRead,
+            readDate: isRead && readDate ? readDate.toISOString() : undefined,
+            reviewText: isRead ? reviewText : '', // Only save review text if read
+        });
+        // Toast is handled by the caller (BookDetailsPage) after successful API calls
+        onOpenChange(false);
+    } catch (error) {
+        console.error("Error in onLogSaved:", error);
+        toast({ title: "Save Error", description: "Could not save your log. Please try again.", variant: "destructive" });
+    } finally {
+        setIsSaving(false);
+    }
   };
 
   return (
@@ -72,7 +86,7 @@ export function LogBookDialog({ book, isOpen, onOpenChange, onLogSaved, existing
         <DialogHeader>
           <DialogTitle>Log & Review: {book.title}</DialogTitle>
           <DialogDescription>
-            Rate this book, mark it as read, and optionally write a review.
+            {existingReview ? "Edit your log and review." : "Rate this book, mark it as read, and optionally write a review."}
           </DialogDescription>
         </DialogHeader>
         <div className="grid gap-6 py-4">
@@ -90,7 +104,16 @@ export function LogBookDialog({ book, isOpen, onOpenChange, onLogSaved, existing
             <Checkbox 
               id="isRead" 
               checked={isRead} 
-              onCheckedChange={(checked) => setIsRead(Boolean(checked))}
+              onCheckedChange={(checked) => {
+                const newIsRead = Boolean(checked);
+                setIsRead(newIsRead);
+                if (!newIsRead) {
+                    // Optionally clear date if unchecking "read"
+                    // setReadDate(undefined); 
+                } else if (newIsRead && !readDate) {
+                    setReadDate(new Date()); // Default to today if marking as read and no date
+                }
+              }}
             />
             <Label htmlFor="isRead" className="font-medium">I have read this book</Label>
           </div>
@@ -125,25 +148,24 @@ export function LogBookDialog({ book, isOpen, onOpenChange, onLogSaved, existing
           )}
           
           <div className="space-y-2">
-            <Label htmlFor="reviewText">Your Review / Notes</Label>
+            <Label htmlFor="reviewText">{isRead ? "Your Review" : "Notes (private)"}</Label>
             <Textarea 
               id="reviewText"
-              placeholder={isRead ? `What did you think of "${book.title}"?` : "Add some notes..."}
+              placeholder={isRead ? `What did you think of "${book.title}"?` : "Add some private notes..."}
               value={reviewText}
               onChange={(e) => setReviewText(e.target.value)}
               className="min-h-[120px]"
             />
              <p className="text-xs text-muted-foreground">
-                {isRead ? "This will be published as your review." : "Notes are private to your log."}
+                {isRead ? "This will be published as your review if you provide text and a rating." : "Notes are private to your log."}
             </p>
           </div>
         </div>
         <DialogFooter>
-          <DialogClose asChild>
-            <Button type="button" variant="outline">Cancel</Button>
-          </DialogClose>
-          <Button type="button" onClick={handleSave} className="transition-transform hover:scale-105">
-            <Save className="mr-2 h-4 w-4" /> Save Log
+          <DialogClose asChild><Button type="button" variant="outline" disabled={isSaving}>Cancel</Button></DialogClose>
+          <Button type="button" onClick={handleSave} className="transition-transform hover:scale-105" disabled={isSaving}>
+            {isSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+            {isSaving ? "Saving..." : "Save Log"}
           </Button>
         </DialogFooter>
       </DialogContent>
