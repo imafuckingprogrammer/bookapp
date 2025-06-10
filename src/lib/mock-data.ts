@@ -1,4 +1,5 @@
-import type { Book, Review, BookList } from '@/types';
+
+import type { Book, Review, BookList, Comment } from '@/types';
 
 export const mockBooks: Book[] = [
   {
@@ -6,7 +7,6 @@ export const mockBooks: Book[] = [
     title: 'The Great Gatsby',
     author: 'F. Scott Fitzgerald',
     coverImageUrl: 'https://placehold.co/300x450.png',
-    dataAiHint: 'classic novel',
     summary: 'A story about the American dream and its decay, set in the Roaring Twenties.',
     averageRating: 4.5,
     genres: ['Classic', 'Fiction'],
@@ -18,7 +18,6 @@ export const mockBooks: Book[] = [
     title: 'To Kill a Mockingbird',
     author: 'Harper Lee',
     coverImageUrl: 'https://placehold.co/300x450.png',
-    dataAiHint: 'literature fiction',
     summary: 'A poignant novel addressing racial injustice in the American South.',
     averageRating: 4.8,
     genres: ['Classic', 'Fiction', 'Historical'],
@@ -30,7 +29,6 @@ export const mockBooks: Book[] = [
     title: '1984',
     author: 'George Orwell',
     coverImageUrl: 'https://placehold.co/300x450.png',
-    dataAiHint: 'dystopian future',
     summary: 'A dystopian novel set in a totalitarian society under constant surveillance.',
     averageRating: 4.6,
     genres: ['Dystopian', 'Science Fiction', 'Classic'],
@@ -42,12 +40,34 @@ export const mockBooks: Book[] = [
     title: 'The Lord of the Rings',
     author: 'J.R.R. Tolkien',
     coverImageUrl: 'https://placehold.co/300x450.png',
-    dataAiHint: 'fantasy epic',
     summary: 'An epic high-fantasy novel about the quest to destroy the One Ring.',
     averageRating: 4.9,
     genres: ['Fantasy', 'Adventure', 'Classic'],
     publicationYear: 1954,
     isbn: '9780618640157'
+  },
+];
+
+export const mockInitialComments: Comment[] = [
+  { 
+    id: 'comment1-list1', 
+    userId: 'u2', 
+    userName: 'Bob The Builder', 
+    text: 'Great collection of classics!', 
+    createdAt: new Date(Date.now() - 86400000 * 2).toISOString(), 
+    likes: 5,
+    userAvatarUrl: 'https://placehold.co/40x40.png',
+    replies: [
+      {
+        id: 'reply1-comment1-list1',
+        userId: 'u1',
+        userName: 'Alice Wonderland',
+        userAvatarUrl: 'https://placehold.co/40x40.png',
+        text: 'Thanks Bob!',
+        createdAt: new Date(Date.now() - 86400000 * 1).toISOString(),
+        likes: 2
+      }
+    ]
   },
 ];
 
@@ -63,7 +83,7 @@ export const mockReviews: Review[] = [
     createdAt: new Date(Date.now() - 86400000 * 2).toISOString(), // 2 days ago
     likes: 15,
     comments: [
-      { id: 'c1', userId: 'u2', userName: 'Bob The Builder', text: 'Totally agree!', createdAt: new Date(Date.now() - 86400000 * 1).toISOString() }
+      { id: 'c1', userId: 'u2', userName: 'Bob The Builder', userAvatarUrl: 'https://placehold.co/40x40.png', text: 'Totally agree!', createdAt: new Date(Date.now() - 86400000 * 1).toISOString(), likes: 3 }
     ]
   },
   {
@@ -100,7 +120,9 @@ export const mockBookLists: BookList[] = [
     books: [mockBooks[0], mockBooks[1]],
     createdAt: new Date(Date.now() - 86400000 * 10).toISOString(),
     updatedAt: new Date(Date.now() - 86400000 * 3).toISOString(),
-    likes: 30
+    likes: 30,
+    isPublic: true,
+    comments: [...mockInitialComments]
   },
   {
     id: 'l2',
@@ -111,6 +133,8 @@ export const mockBookLists: BookList[] = [
     books: [mockBooks[2]],
     createdAt: new Date(Date.now() - 86400000 * 5).toISOString(),
     updatedAt: new Date(Date.now() - 86400000 * 5).toISOString(),
-    likes: 12
+    likes: 12,
+    isPublic: false,
+    comments: []
   },
 ];

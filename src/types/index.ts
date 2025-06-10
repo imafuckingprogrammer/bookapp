@@ -21,7 +21,7 @@ export type Review = {
   reviewText?: string;
   createdAt: string; // ISO date string
   likes?: number;
-  comments?: Comment[];
+  comments?: Comment[]; // Reviews can have comments
 };
 
 export type Comment = {
@@ -31,6 +31,8 @@ export type Comment = {
   userAvatarUrl?: string;
   text: string;
   createdAt: string; // ISO date string
+  likes?: number;
+  replies?: Comment[];
 };
 
 export type BookList = {
@@ -39,8 +41,10 @@ export type BookList = {
   userName: string; // Creator's name
   name: string;
   description?: string;
-  books: Book[]; // Embed simplified book objects or just IDs
+  books: Book[];
   createdAt: string; // ISO date string
   updatedAt: string; // ISO date string
   likes?: number;
+  isPublic: boolean;
+  comments?: Comment[];
 };

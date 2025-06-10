@@ -1,10 +1,11 @@
+
 import type { BookList } from '@/types';
 import Link from 'next/link';
 import Image from 'next/image';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
-import { Heart, BookOpenCheck } from 'lucide-react';
+import { Heart, BookOpenCheck, Eye, EyeOff, MessageSquare } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 
 interface ListCardProps {
@@ -22,14 +23,18 @@ export function ListCard({ list }: ListCardProps) {
           <CardTitle className="text-xl font-headline leading-tight mb-1 hover:text-primary transition-colors">
             {list.name}
           </CardTitle>
-          <div className="flex items-center space-x-2 text-xs text-muted-foreground">
+          <div className="flex items-center space-x-2 text-xs text-muted-foreground mb-1">
             <Avatar className="h-5 w-5">
-              <AvatarImage src={`https://placehold.co/40x40.png`} alt={list.userName} />
+              <AvatarImage src={list.userAvatarUrl || `https://placehold.co/40x40.png`} alt={list.userName} />
               <AvatarFallback>{list.userName.substring(0,1)}</AvatarFallback>
             </Avatar>
             <span>By {list.userName}</span>
             <span>&bull;</span>
             <span>Updated {timeAgo}</span>
+          </div>
+          <div className="flex items-center space-x-1 text-xs text-muted-foreground">
+            {list.isPublic ? <Eye className="h-3 w-3" /> : <EyeOff className="h-3 w-3" />}
+            <span>{list.isPublic ? 'Public' : 'Private'}</span>
           </div>
         </CardHeader>
       </Link>
@@ -41,7 +46,7 @@ export function ListCard({ list }: ListCardProps) {
           <div className="grid grid-cols-4 gap-1 h-20 mb-3">
             {coverImages.map((src, index) => (
               <div key={index} className="relative aspect-[2/3] bg-muted rounded-sm overflow-hidden">
-                <Image src={src} alt={`Book cover ${index+1}`} layout="fill" objectFit="cover" />
+                <Image src={src || 'https://placehold.co/80x120.png'} alt={`Book cover ${index+1}`} layout="fill" objectFit="cover" />
               </div>
             ))}
             {/* Fill remaining slots if less than 4 books */}
@@ -57,7 +62,10 @@ export function ListCard({ list }: ListCardProps) {
             <BookOpenCheck className="h-4 w-4 mr-1" /> {list.books.length} books
           </span>
           <span className="flex items-center">
-            <Heart className="h-4 w-4 mr-1" /> {list.likes || 0} likes
+            <Heart className="h-4 w-4 mr-1" /> {list.likes || 0}
+          </span>
+           <span className="flex items-center">
+            <MessageSquare className="h-4 w-4 mr-1" /> {list.comments?.length || 0}
           </span>
         </div>
         <Link href={`/lists/${list.id}`}>

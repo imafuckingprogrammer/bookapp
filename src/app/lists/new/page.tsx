@@ -1,3 +1,4 @@
+
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -8,6 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
+import { Checkbox } from "@/components/ui/checkbox";
 import { useToast } from "@/hooks/use-toast";
 import { useRouter } from "next/navigation";
 import { ListPlus } from "lucide-react";
@@ -15,6 +17,7 @@ import { ListPlus } from "lucide-react";
 const listFormSchema = z.object({
   name: z.string().min(3, "List name must be at least 3 characters.").max(100, "List name must be 100 characters or less."),
   description: z.string().max(500, "Description must be 500 characters or less.").optional(),
+  isPublic: z.boolean().default(true),
 });
 
 type ListFormValues = z.infer<typeof listFormSchema>;
@@ -28,18 +31,23 @@ export default function NewListPage() {
     defaultValues: {
       name: "",
       description: "",
+      isPublic: true,
     },
   });
 
   function onSubmit(data: ListFormValues) {
-    // In a real app, you'd send this to your backend
+    // In a real app, you'd send this to your backend and update global state
     console.log("New list data:", data);
+    // For now, we simulate adding to mock data by creating a new object
+    // const newListId = `l${mockBookLists.length + 1}`; // This approach is not robust for real apps
+    // const newList = { ...data, id: newListId, userId: 'currentUser', userName: 'Current User', books: [], createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), likes:0 };
+    // mockBookLists.push(newList); // This direct mutation won't work effectively without proper state management
+
     toast({
       title: "List Created!",
-      description: `Your list "${data.name}" has been successfully created.`,
+      description: `Your list "${data.name}" has been successfully created (simulated).`,
     });
     // For now, just redirect to the main lists page
-    // In a real app, you might redirect to the newly created list's page: router.push(`/lists/new-list-id`);
     router.push("/lists"); 
   }
 
@@ -83,6 +91,28 @@ export default function NewListPage() {
                       />
                     </FormControl>
                     <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="isPublic"
+                render={({ field }) => (
+                  <FormItem className="flex flex-row items-start space-x-3 space-y-0 rounded-md border p-4 shadow">
+                    <FormControl>
+                      <Checkbox
+                        checked={field.value}
+                        onCheckedChange={field.onChange}
+                      />
+                    </FormControl>
+                    <div className="space-y-1 leading-none">
+                      <FormLabel>
+                        Make list public?
+                      </FormLabel>
+                      <FormDescription>
+                        Public lists can be seen by others. Private lists are only visible to you.
+                      </FormDescription>
+                    </div>
                   </FormItem>
                 )}
               />
