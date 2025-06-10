@@ -1,3 +1,4 @@
+
 import type { Book } from '@/types';
 import Image from 'next/image';
 import Link from 'next/link';
@@ -12,16 +13,15 @@ interface BookCardProps {
 export function BookCard({ book }: BookCardProps) {
   return (
     <Card className="flex flex-col h-full overflow-hidden shadow-lg hover:shadow-xl transition-shadow duration-300 rounded-lg">
-      <Link href={`/books/${book.id}`} className="block">
+      <Link href={`/books/${book.id}`} className="block group">
         <CardHeader className="p-0">
           <div className="aspect-[2/3] w-full relative">
             <Image
-              src={book.coverImageUrl}
+              src={book.coverImageUrl || 'https://placehold.co/300x450.png'}
               alt={`Cover of ${book.title}`}
               layout="fill"
               objectFit="cover"
               className="transition-transform duration-300 group-hover:scale-105"
-              
             />
           </div>
         </CardHeader>
@@ -33,7 +33,7 @@ export function BookCard({ book }: BookCardProps) {
           </CardTitle>
         </Link>
         <p className="text-sm text-muted-foreground mb-2">by {book.author}</p>
-        {book.averageRating && (
+        {typeof book.averageRating === 'number' && (
           <div className="flex items-center">
             <StarRating initialRating={book.averageRating} readonly size={16} />
             <span className="ml-2 text-xs text-muted-foreground">({book.averageRating.toFixed(1)})</span>
