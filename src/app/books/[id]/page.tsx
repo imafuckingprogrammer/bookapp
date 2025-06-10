@@ -9,18 +9,19 @@ import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
 import { Badge } from '@/components/ui/badge';
 import { Heart, ListPlus, Share2, BookOpenCheck, Bookmark, Edit, Trash2, Library, Loader2, BookIcon } from 'lucide-react';
-import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogClose } from '@/components/ui/dialog';
+import { Card, CardContent, CardFooter, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogClose } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
 import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import { LogBookDialog } from '@/components/books/LogBookDialog';
 import { format } from 'date-fns';
-import { getBookDetails, getBookReviews, getUserBookInteraction, updateUserBookInteraction, likeBook, unlikeBook, addBookReview, deleteReview as deleteReviewService } from '@/lib/services/bookService';
-import { getUserLists, addBookToList as addBookToListService } from '@/lib/services/listService'; // Assuming listService for user's lists
+import { getBookDetails, getBookReviews, getUserBookInteraction, updateUserBookInteraction, likeBook, unlikeBook, addBookReview } from '@/lib/services/bookService';
+import { addBookToList as addBookToListService } from '@/lib/services/listService'; 
+import { getUserLists } from '@/lib/services/userService';
 import { useAuth } from '@/contexts/AuthContext';
-import { likeReview as likeReviewService, unlikeReview as unlikeReviewService } from '@/lib/services/reviewService';
+import { likeReview as likeReviewService, unlikeReview as unlikeReviewService, deleteReview as deleteReviewService } from '@/lib/services/reviewService';
 
 
 export default function BookDetailsPage({ params }: { params: { id: string } }) {
@@ -79,7 +80,7 @@ export default function BookDetailsPage({ params }: { params: { id: string } }) 
 
   const fetchUserInteractionData = useCallback(async () => {
     if (!isAuthenticated || !userProfile) {
-      setUserInteraction(null); // Clear interaction if not authenticated
+      setUserInteraction(null); 
       setIsLoadingInteraction(false);
       return;
     }
@@ -102,11 +103,11 @@ export default function BookDetailsPage({ params }: { params: { id: string } }) 
   
   useEffect(() => {
     fetchUserInteractionData();
-  }, [fetchUserInteractionData]); // Depends on auth state
+  }, [fetchUserInteractionData]); 
 
   useEffect(() => {
-    if (isAuthenticated && isAddToListDialogOpen) {
-      getUserLists(userProfile!.id) // Assuming userProfile.id is the current user's ID
+    if (isAuthenticated && isAddToListDialogOpen && userProfile) {
+      getUserLists(userProfile.id) 
         .then(data => setUserLists(data.items))
         .catch(err => {
           console.error("Failed to fetch user lists:", err);
@@ -122,10 +123,8 @@ export default function BookDetailsPage({ params }: { params: { id: string } }) 
     }
     try {
       const updated = await updateUserBookInteraction(currentBook.id, interactionUpdate);
-      setUserInteraction(updated); // Update local state with the full interaction object from backend
+      setUserInteraction(updated); 
       
-      // Update specific fields on currentBook for immediate UI reflection if they are part of it
-      // This part might be removed if UserBookInteraction is the sole source of truth for these
       setCurrentBook(prev => prev ? {
         ...prev,
         currentUserRating: updated.rating ?? prev.currentUserRating,
@@ -162,42 +161,49 @@ export default function BookDetailsPage({ params }: { params: { id: string } }) 
     readDate?: string;
     reviewText?: string;
   }) => {
-    if (!isAuthenticated || !currentBook) return;
+    if (!isAuthenticated || !currentBook || !userProfile) return;
 
-    // Update interaction (rating, isRead, readDate)
     await handleUpdateInteraction({
         rating: logDetails.rating,
         is_read: logDetails.isRead,
         read_date: logDetails.readDate,
-        log_notes: !logDetails.reviewText && logDetails.isRead ? "Logged as read" : undefined, // Example log note
+        log_notes: !logDetails.reviewText && logDetails.isRead ? "Logged as read" : undefined, 
     });
     
-    // Handle review (create, update, or delete)
     const existingUserReview = reviews.find(r => r.user_id === userProfile?.id);
 
-    if (logDetails.isRead && logDetails.rating && logDetails.reviewText) { // Create or Update review
+    if (logDetails.isRead && logDetails.rating && logDetails.reviewText) { 
         try {
-            // This is simplified. Real app needs to differentiate create vs update.
-            // For now, let's assume it creates. An update would need reviewService.updateReview(existingUserReview.id, ...)
             const newOrUpdatedReview = await addBookReview(currentBook.id, logDetails.rating, logDetails.reviewText);
-            // Re-fetch reviews to see the new/updated one
             fetchReviewsData(); 
             toast({ title: "Review Saved!", description: "Your review has been published." });
         } catch (error) {
             console.error("Failed to save review", error);
             toast({ title: "Error", description: "Could not save your review.", variant: "destructive" });
         }
-    } else if (!logDetails.isRead && existingUserReview) { // Delete review if marked as not read
+    } else if (!logDetails.reviewText && existingUserReview && logDetails.isRead && logDetails.rating) {
+        // If review text is cleared but still read and rated, effectively "delete" text part of review
+        // This scenario needs careful handling. Assuming reviewService can update with empty text.
+        // Or, we might need a separate 'updateReviewText' or handle it in addBookReview if it can update.
+        // For now, if reviewText is empty, it could mean "remove review text".
+        // Let's assume for now that saving with empty text clears it (if backend supports it).
+        // OR: If the goal is to delete the review if text is removed, use deleteReviewService.
+        // This part needs clarification on desired behavior.
+        // For now, if no review text but was read, it's just a log.
+        // If they explicitly cleared review text for an existing review:
+        // await deleteReviewService(existingUserReview.id);
+        // fetchReviewsData(); 
+        // toast({ title: "Review Text Removed" });
+    } else if (!logDetails.isRead && existingUserReview) { 
         try {
             await deleteReviewService(existingUserReview.id);
-            fetchReviewsData(); // Re-fetch
+            fetchReviewsData(); 
             toast({ title: "Review Deleted", description: "Your review was removed as the book is no longer marked as read." });
         } catch (error) {
              console.error("Failed to delete review", error);
              toast({ title: "Error", description: "Could not delete your review.", variant: "destructive" });
         }
     }
-     // After saving, re-fetch user interaction to ensure consistency
     fetchUserInteractionData();
   };
   
@@ -213,7 +219,7 @@ export default function BookDetailsPage({ params }: { params: { id: string } }) 
     const newLikedState = !userInteraction?.is_liked;
     try {
         if(newLikedState) await likeBook(currentBook.id); else await unlikeBook(currentBook.id);
-        await handleUpdateInteraction({ is_liked: newLikedState }); // This updates local state
+        await handleUpdateInteraction({ is_liked: newLikedState }); 
         toast({ title: newLikedState ? "Book Liked!" : "Book Unliked" });
     } catch (error) {
         console.error("Failed to toggle book like", error);
@@ -238,7 +244,6 @@ export default function BookDetailsPage({ params }: { params: { id: string } }) 
         if (newLikedState) await likeReviewService(reviewId);
         else await unlikeReviewService(reviewId);
         
-        // Optimistic update for UI, then re-fetch or rely on service to return updated review
         setReviews(prevReviews => 
           prevReviews.map(r => 
             r.id === reviewId ? { 
@@ -248,7 +253,6 @@ export default function BookDetailsPage({ params }: { params: { id: string } }) 
             } : r
           )
         );
-        // fetchReviewsData(); // Or update just one review based on API response
     } catch (error) {
         console.error("Failed to like/unlike review", error);
         toast({ title: "Error", description: "Could not update like status.", variant: "destructive" });
@@ -262,9 +266,8 @@ export default function BookDetailsPage({ params }: { params: { id: string } }) 
 
     try {
         await deleteReviewService(userReview.id);
-        fetchReviewsData(); // Re-fetch reviews
-        // Also clear related interaction fields if necessary, or re-fetch interaction
-        await handleUpdateInteraction({ rating: undefined, review_id: undefined /* if you track review_id in interaction */ });
+        fetchReviewsData(); 
+        await handleUpdateInteraction({ rating: undefined, review_id: undefined });
         toast({title: "Review Deleted", description: "Your review has been removed."});
     } catch (error) {
         console.error("Failed to delete review", error);
@@ -295,7 +298,7 @@ export default function BookDetailsPage({ params }: { params: { id: string } }) 
           onOpenChange={setIsLogBookDialogOpen}
           onLogSaved={handleLogSaved}
           existingReview={currentUserReview}
-          initialInteraction={userInteraction || {}} // Pass current interaction state
+          initialInteraction={userInteraction || {}} 
         />
       )}
 
@@ -306,8 +309,8 @@ export default function BookDetailsPage({ params }: { params: { id: string } }) 
                 <Image
                 src={currentBook.coverImageUrl}
                 alt={`Cover of ${currentBook.title}`}
-                layout="fill"
-                objectFit="cover"
+                fill={true}
+                style={{objectFit: "cover"}}
                 />
             ) : (
                 <BookIcon className="w-1/2 h-1/2 text-muted-foreground/50" />
@@ -323,14 +326,12 @@ export default function BookDetailsPage({ params }: { params: { id: string } }) 
               {currentBook.publicationYear && <p className="text-sm text-muted-foreground mb-3">Published in {currentBook.publicationYear}</p>}
               
               <div className="flex items-center mb-1">
-                {currentBook.averageRating && currentBook.averageRating > 0 && (
+                {typeof currentBook.averageRating === 'number' && currentBook.averageRating > 0 && (
                   <>
                     <StarRating initialRating={currentBook.averageRating} readonly size={20} />
                     <span className="ml-2 text-md text-foreground">
                       {currentBook.averageRating.toFixed(1)}
                     </span>
-                    {/* TODO: Fetch review count for the book for community ratings */}
-                    {/* <span className="ml-1 text-xs text-muted-foreground">({reviews.length} community ratings)</span> */}
                   </>
                 )}
               </div>
@@ -481,7 +482,14 @@ export default function BookDetailsPage({ params }: { params: { id: string } }) 
             <div className="mt-6 space-y-6">
             {reviews.filter(r => r.user_id !== userProfile?.id).length > 0 ? ( 
                 reviews.filter(r => r.user_id !== userProfile?.id).map((review) => (
-                <ReviewCard key={review.id} review={review} onLikeReview={handleLikeReview} onReplyToReview={(reviewId, text) => console.log("Reply to review (stub):", reviewId, text)} />
+                <ReviewCard 
+                    key={review.id} 
+                    review={review} 
+                    onLikeReview={handleLikeReview} 
+                    onReplyToReview={async (reviewId, text) => { /* Stub */ console.log("Reply to review (stub):", reviewId, text); return null; }}
+                    onDeleteReview={async (reviewId) => { /* Stub for other users' reviews - admin only usually */ console.log("Delete review (stub):", reviewId); }}
+                    onEditReview={(reviewToEdit) => { /* Stub for other users' reviews - admin only usually */ console.log("Edit review (stub):", reviewToEdit);}}
+                 />
                 ))
             ) : (
                 !currentUserReview && <p className="text-muted-foreground text-center py-4">No reviews yet. Be the first to write one!</p>
@@ -496,3 +504,6 @@ export default function BookDetailsPage({ params }: { params: { id: string } }) 
     </div>
   );
 }
+
+
+    
