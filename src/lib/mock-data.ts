@@ -18,6 +18,7 @@ export const mockBooks: Book[] = [
     readDate: new Date(Date.now() - 86400000 * 10).toISOString(), // 10 days ago
     isWantToRead: false,
     isLikedByCurrentUser: true,
+    isOwned: true,
   },
   {
     id: '2',
@@ -32,6 +33,7 @@ export const mockBooks: Book[] = [
     // User-specific mock data
     isWantToRead: true,
     isLikedByCurrentUser: false,
+    isOwned: false,
   },
   {
     id: '3',
@@ -48,6 +50,7 @@ export const mockBooks: Book[] = [
     isRead: true,
     readDate: new Date(Date.now() - 86400000 * 30).toISOString(),
     isLikedByCurrentUser: true,
+    isOwned: true,
   },
   {
     id: '4',
@@ -60,6 +63,7 @@ export const mockBooks: Book[] = [
     publicationYear: 1954,
     isbn: '9780618640157',
     isLikedByCurrentUser: false,
+    isOwned: false,
   },
 ];
 
@@ -201,3 +205,6 @@ export const mockUserWatchlist: Book[] = mockBooks.filter(b => b.id === '2');
 
 // Mock books liked by the current user 'u1' (Alice)
 export const mockUserLikedBooks: Book[] = mockBooks.filter(b => b.isLikedByCurrentUser);
+
+// Mock books owned by the current user 'u1' (Alice)
+export const mockUserOwnedBooks: Book[] = mockBooks.filter(b => b.isOwned);

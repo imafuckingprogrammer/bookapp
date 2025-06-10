@@ -16,6 +16,7 @@ export type Book = {
   readDate?: string; // ISO date string when the user read it
   isWantToRead?: boolean; // Is this book on the current user's watchlist?
   isLikedByCurrentUser?: boolean; // Has the current user liked this book?
+  isOwned?: boolean; // Does the current user own this book?
 };
 
 export type Review = {

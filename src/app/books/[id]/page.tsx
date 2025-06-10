@@ -9,45 +9,40 @@ import { ReviewCard } from '@/components/reviews/ReviewCard';
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
 import { Badge } from '@/components/ui/badge';
-import { Heart, ListPlus, Share2, MessageSquare, BookOpenCheck, Bookmark, Edit, ThumbsUp, Trash2 } from 'lucide-react';
+import { Heart, ListPlus, Share2, MessageSquare, BookOpenCheck, Bookmark, Edit, ThumbsUp, Trash2, Library } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogClose } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { LogBookDialog } from '@/components/books/LogBookDialog'; // New Dialog
+import { LogBookDialog } from '@/components/books/LogBookDialog';
 import { format } from 'date-fns';
 
 
 export default function BookDetailsPage({ params }: { params: { id: string } }) {
   const { toast } = useToast();
-  // Use a more descriptive name for the book state that can be updated locally
   const [currentBook, setCurrentBook] = useState<Book | null>(null);
   const [reviews, setReviews] = useState<ReviewType[]>([]);
   const [userLists, setUserLists] = useState<BookList[]>([]);
   const [selectedListId, setSelectedListId] = useState<string | undefined>(undefined);
   const [isAddToListDialogOpen, setIsAddToListDialogOpen] = useState(false);
   const [isLogBookDialogOpen, setIsLogBookDialogOpen] = useState(false);
-  const [userReview, setUserReview] = useState<ReviewType | null>(null); // For current user's review
+  const [userReview, setUserReview] = useState<ReviewType | null>(null);
 
 
   useEffect(() => {
-    // Simulate fetching book and its user-specific data
     const foundBook = mockBooks.find((b) => b.id === params.id);
     if (foundBook) {
-      setCurrentBook(JSON.parse(JSON.stringify(foundBook))); // Deep copy for local modifications
+      setCurrentBook(JSON.parse(JSON.stringify(foundBook))); 
     }
     
-    // Simulate fetching all reviews for the book
     const allBookReviews = mockReviews.filter((r) => r.bookId === params.id);
     setReviews(allBookReviews);
 
-    // Find if the current user (u1) has a review for this book
-    const currentUserReview = allBookReviews.find(r => r.userId === 'u1'); // Assuming 'u1' is current user
+    const currentUserReview = allBookReviews.find(r => r.userId === 'u1'); 
     setUserReview(currentUserReview || null);
 
-    // Simulate fetching user's lists
     setUserLists(mockBookLists.filter(list => list.userId === 'u1')); 
   }, [params.id]);
 
@@ -62,6 +57,8 @@ export default function BookDetailsPage({ params }: { params: { id: string } }) 
       return;
     }
     console.log(`Simulating adding book "${currentBook.title}" to list ID: ${selectedListId}`);
+    // In a real app, update mockBookLists or call an API, then update global state.
+    // For now, it's just a toast and console log.
     toast({ title: "Book Added (Simulated)", description: `"${currentBook.title}" added to list.` });
     setIsAddToListDialogOpen(false);
     setSelectedListId(undefined);
@@ -82,12 +79,11 @@ export default function BookDetailsPage({ params }: { params: { id: string } }) 
         readDate: logDetails.readDate,
       };
 
-      // Simulate updating or creating a review
       if (logDetails.isRead && logDetails.rating) {
         const newOrUpdatedReview: ReviewType = {
           id: userReview?.id || `review-${Date.now()}`,
-          userId: 'u1', // Current user
-          userName: 'Alice Wonderland', // Current user name
+          userId: 'u1', 
+          userName: 'Alice Wonderland', 
           userAvatarUrl: 'https://placehold.co/40x40.png',
           bookId: prev.id,
           rating: logDetails.rating,
@@ -102,7 +98,6 @@ export default function BookDetailsPage({ params }: { params: { id: string } }) 
           return [newOrUpdatedReview, ...otherReviews];
         });
       } else if (!logDetails.isRead && userReview) { 
-        // If marked as unread and there was a review, remove it (or handle differently)
         setReviews(prevReviews => prevReviews.filter(r => r.id !== userReview.id));
         setUserReview(null);
       }
@@ -128,6 +123,15 @@ export default function BookDetailsPage({ params }: { params: { id: string } }) 
       return { ...prev, isLikedByCurrentUser: newLikedState };
     });
   };
+  
+  const toggleOwnedBook = () => {
+    setCurrentBook(prev => {
+      if (!prev) return null;
+      const newOwnedState = !prev.isOwned;
+      toast({ title: newOwnedState ? "Marked as Owned!" : "Marked as Not Owned", description: `You ${newOwnedState ? 'now own' : "no longer own (or haven't marked as owned)"} "${prev.title}".` });
+      return { ...prev, isOwned: newOwnedState };
+    });
+  };
 
   const handleLikeReview = (reviewId: string) => {
     setReviews(prevReviews => 
@@ -142,17 +146,15 @@ export default function BookDetailsPage({ params }: { params: { id: string } }) 
   
   const handleDeleteReview = () => {
     if (!userReview) return;
-    // Simulate deleting review
     setReviews(prevReviews => prevReviews.filter(r => r.id !== userReview.id));
     setUserReview(null);
-    setCurrentBook(prev => prev ? {...prev, userRating: undefined, isRead: false, readDate: undefined} : null); // Reset book specific log
+    setCurrentBook(prev => prev ? {...prev, userRating: undefined, isRead: false, readDate: undefined} : null); 
     toast({title: "Review Deleted", description: "Your review has been removed."});
   };
 
 
   return (
     <div className="max-w-5xl mx-auto space-y-8">
-      {/* Log Book Dialog */}
       {currentBook && (
         <LogBookDialog 
           book={currentBook} 
@@ -172,6 +174,9 @@ export default function BookDetailsPage({ params }: { params: { id: string } }) 
               layout="fill"
               objectFit="cover"
             />
+             {currentBook.isOwned && (
+              <Badge variant="default" className="absolute top-2 left-2 shadow-lg">Owned</Badge>
+            )}
           </div>
           <div className="md:w-2/3 p-6 md:p-8 flex flex-col justify-between">
             <div>
@@ -198,7 +203,6 @@ export default function BookDetailsPage({ params }: { params: { id: string } }) 
                 </div>
               )}
 
-
               <div className="flex flex-wrap gap-2 mb-4">
                 {currentBook.genres?.map((genre) => (
                   <Badge key={genre} variant="secondary" className="transition-colors hover:bg-accent hover:text-accent-foreground">{genre}</Badge>
@@ -220,10 +224,18 @@ export default function BookDetailsPage({ params }: { params: { id: string } }) 
                 <Bookmark className="mr-2 h-4 w-4" /> {currentBook.isWantToRead ? "On Watchlist" : "Want to Read"}
               </Button>
                <Button 
+                variant={currentBook.isOwned ? "secondary" : "outline"} 
+                className="transition-transform hover:scale-105"
+                onClick={toggleOwnedBook}
+              >
+                <Library className="mr-2 h-4 w-4" /> {currentBook.isOwned ? "Owned" : "Mark as Owned"}
+              </Button>
+               <Button 
                 variant="outline" 
                 size="icon" 
                 className={`transition-transform hover:scale-105 ${currentBook.isLikedByCurrentUser ? 'text-red-500 hover:text-red-600 border-red-500 hover:border-red-600' : 'text-muted-foreground'}`}
                 onClick={toggleLikeBook}
+                title={currentBook.isLikedByCurrentUser ? "Unlike book" : "Like book"}
               >
                 <Heart className={`h-4 w-4 ${currentBook.isLikedByCurrentUser ? 'fill-current' : ''}`} />
                 <span className="sr-only">Like book</span>
@@ -278,7 +290,6 @@ export default function BookDetailsPage({ params }: { params: { id: string } }) 
 
       <section>
         <h2 className="text-2xl font-bold mb-4 font-headline">Reviews</h2>
-        {/* Current User's Review Section (if exists) */}
         {userReview ? (
           <Card className="mb-6 border-primary bg-primary/5">
             <CardHeader>
@@ -303,7 +314,7 @@ export default function BookDetailsPage({ params }: { params: { id: string } }) 
             </CardFooter>
           </Card>
         ) : (
-          !currentBook.isRead && ( // Only show "Write a Review" if not read or no existing review
+          !currentBook.isRead && ( 
             <Card className="mb-6">
                 <CardHeader>
                     <CardTitle>Write a Review</CardTitle>
@@ -318,9 +329,8 @@ export default function BookDetailsPage({ params }: { params: { id: string } }) 
           )
         )}
         
-        {/* Other Users' Reviews */}
         <div className="mt-6 space-y-6">
-          {reviews.filter(r => r.userId !== 'u1').length > 0 ? ( // Filter out current user's review if displayed above
+          {reviews.filter(r => r.userId !== 'u1').length > 0 ? ( 
             reviews.filter(r => r.userId !== 'u1' || !userReview).map((review) => (
               <ReviewCard key={review.id} review={review} onLikeReview={handleLikeReview} onReplyToReview={() => { /* TODO */}} />
             ))

@@ -1,5 +1,5 @@
 
-"use client"; // Required for useState, useEffect, and Tabs
+"use client"; 
 
 import { useState, useEffect } from 'react';
 import Image from 'next/image';
@@ -10,18 +10,18 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { BookCard } from "@/components/books/BookCard";
 import { ReviewCard } from "@/components/reviews/ReviewCard";
 import { ListCard } from "@/components/lists/ListCard";
-import { mockBooks, mockReviews, mockBookLists, mockUserDiary, mockUserWatchlist, mockUserLikedBooks } from "@/lib/mock-data";
+import { mockBooks, mockReviews, mockBookLists, mockUserDiary, mockUserWatchlist, mockUserLikedBooks, mockUserOwnedBooks } from "@/lib/mock-data";
 import type { Book, Review, BookList, DiaryEntry } from '@/types';
-import { Edit3, Settings, LogOut, CalendarDays, Eye, Heart as HeartIcon } from "lucide-react";
+import { Edit3, Settings, LogOut, CalendarDays, Eye, Heart as HeartIcon, Library } from "lucide-react";
 import { format } from 'date-fns';
 import Link from 'next/link';
+import { StarRating } from '@/components/ui/StarRating';
 
-// Placeholder user data - in a real app, this would come from auth/DB
+
 const MOCK_USER_ID = 'u1';
 const MOCK_USER_NAME = 'Alice Wonderland';
 
 export default function ProfilePage() {
-  // Simulate fetching data for the current user
   const [user, setUser] = useState({
     name: MOCK_USER_NAME,
     username: "alicereads",
@@ -35,14 +35,15 @@ export default function ProfilePage() {
   const [userLists, setUserLists] = useState<BookList[]>([]);
   const [userWatchlist, setUserWatchlist] = useState<Book[]>([]);
   const [userLikedBooks, setUserLikedBooks] = useState<Book[]>([]);
+  const [userOwnedBooks, setUserOwnedBooks] = useState<Book[]>([]);
 
   useEffect(() => {
-    // Simulate fetching user-specific data
-    setUserDiary(mockUserDiary.filter(entry => mockBooks.find(b => b.id === entry.bookId))); // Filter out entries for non-existent books
+    setUserDiary(mockUserDiary.filter(entry => mockBooks.find(b => b.id === entry.bookId)));
     setUserReviews(mockReviews.filter(r => r.userId === MOCK_USER_ID));
     setUserLists(mockBookLists.filter(l => l.userId === MOCK_USER_ID));
     setUserWatchlist(mockUserWatchlist);
     setUserLikedBooks(mockUserLikedBooks);
+    setUserOwnedBooks(mockUserOwnedBooks);
   }, []);
 
   const stats = {
@@ -51,10 +52,10 @@ export default function ProfilePage() {
     listsCreated: userLists.length,
     booksOnWatchlist: userWatchlist.length,
     booksLiked: userLikedBooks.length,
+    booksOwned: userOwnedBooks.length,
   };
 
   const handleLikeReview = (reviewId: string) => {
-    // This is a local simulation. In a real app, this would be an API call.
     setUserReviews(prevReviews => 
       prevReviews.map(r => 
         r.id === reviewId ? { ...r, likes: (r.likes || 0) + (r.isLikedByCurrentUser ? -1 : 1), isLikedByCurrentUser: !r.isLikedByCurrentUser } : r
@@ -63,7 +64,6 @@ export default function ProfilePage() {
   };
   const handleReplyToReview = (reviewId: string, replyText: string) => {
     console.log("Replying to review (simulated):", reviewId, replyText);
-    // Add reply logic if review comments are managed here
   };
 
 
@@ -93,7 +93,7 @@ export default function ProfilePage() {
           </div>
           {user.bio && <p className="mt-4 text-center md:text-left text-foreground/80">{user.bio}</p>}
         </CardHeader>
-        <CardContent className="p-4 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2 text-center border-t">
+        <CardContent className="p-4 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-2 text-center border-t">
           <div>
             <p className="text-xl font-bold">{stats.booksRead}</p>
             <p className="text-xs text-muted-foreground">Read</p>
@@ -114,16 +114,21 @@ export default function ProfilePage() {
             <p className="text-xl font-bold">{stats.booksLiked}</p>
             <p className="text-xs text-muted-foreground">Likes</p>
           </div>
+          <div>
+            <p className="text-xl font-bold">{stats.booksOwned}</p>
+            <p className="text-xs text-muted-foreground">Owned</p>
+          </div>
         </CardContent>
       </Card>
 
       <Tabs defaultValue="diary" className="w-full">
-        <TabsList className="grid w-full grid-cols-2 sm:grid-cols-3 md:grid-cols-5 mb-6">
+        <TabsList className="grid w-full grid-cols-2 sm:grid-cols-3 md:grid-cols-6 mb-6">
           <TabsTrigger value="diary">Diary</TabsTrigger>
           <TabsTrigger value="reviews">Reviews</TabsTrigger>
           <TabsTrigger value="lists">Lists</TabsTrigger>
           <TabsTrigger value="watchlist">Watchlist</TabsTrigger>
           <TabsTrigger value="likes">Likes</TabsTrigger>
+          <TabsTrigger value="owned">Owned</TabsTrigger>
         </TabsList>
 
         <TabsContent value="diary">
@@ -131,7 +136,7 @@ export default function ProfilePage() {
                 <CardHeader><CardTitle>Reading Diary ({userDiary.length})</CardTitle></CardHeader>
                 <CardContent className="space-y-4">
                 {userDiary.length > 0 ? userDiary.map(entry => {
-                    const book = mockBooks.find(b => b.id === entry.bookId); // Get full book details
+                    const book = mockBooks.find(b => b.id === entry.bookId); 
                     return (
                     <Card key={entry.bookId + entry.readDate} className="flex items-start space-x-4 p-4 shadow-sm">
                         {book?.coverImageUrl && (
@@ -200,6 +205,21 @@ export default function ProfilePage() {
                         </div>
                     ) : (
                         <p className="text-muted-foreground text-center py-8">You haven't liked any books yet.</p>
+                    )}
+                </CardContent>
+            </Card>
+        </TabsContent>
+
+        <TabsContent value="owned">
+             <Card>
+                <CardHeader><CardTitle>Owned Books ({userOwnedBooks.length})</CardTitle></CardHeader>
+                <CardContent>
+                    {userOwnedBooks.length > 0 ? (
+                        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
+                            {userOwnedBooks.map(book => <BookCard key={book.id} book={book} />)}
+                        </div>
+                    ) : (
+                        <p className="text-muted-foreground text-center py-8">You haven't marked any books as owned yet.</p>
                     )}
                 </CardContent>
             </Card>
