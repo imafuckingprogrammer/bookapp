@@ -35,7 +35,7 @@ export default function BookDetailsPage({ params }: { params: { id: string } }) 
               layout="fill"
               objectFit="cover"
               className=""
-              data-ai-hint={book.dataAiHint || "book cover detail"}
+              
             />
           </div>
           <div className="md:w-2/3 p-6 md:p-8 flex flex-col justify-between">

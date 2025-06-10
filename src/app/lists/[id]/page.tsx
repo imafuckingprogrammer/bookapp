@@ -30,7 +30,7 @@ export default function ListDetailsPage({ params }: { params: { id: string } }) 
             <h1 className="text-4xl font-bold mb-2 font-headline text-primary">{list.name}</h1>
             <div className="flex items-center space-x-2 text-md text-muted-foreground mb-3">
               <Avatar className="h-7 w-7">
-                 <AvatarImage src={`https://placehold.co/40x40.png`} alt={list.userName} data-ai-hint="person face" />
+                 <AvatarImage src={`https://placehold.co/40x40.png`} alt={list.userName}  />
                  <AvatarFallback>{list.userName.substring(0,1)}</AvatarFallback>
               </Avatar>
               <span>Created by {list.userName}</span>

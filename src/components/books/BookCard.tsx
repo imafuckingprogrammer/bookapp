@@ -21,7 +21,7 @@ export function BookCard({ book }: BookCardProps) {
               layout="fill"
               objectFit="cover"
               className="transition-transform duration-300 group-hover:scale-105"
-              data-ai-hint={book.dataAiHint || "book cover"}
+              
             />
           </div>
         </CardHeader>

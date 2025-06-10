@@ -24,7 +24,7 @@ export function ListCard({ list }: ListCardProps) {
           </CardTitle>
           <div className="flex items-center space-x-2 text-xs text-muted-foreground">
             <Avatar className="h-5 w-5">
-              <AvatarImage src={`https://placehold.co/40x40.png`} alt={list.userName} data-ai-hint="person face"/>
+              <AvatarImage src={`https://placehold.co/40x40.png`} alt={list.userName} />
               <AvatarFallback>{list.userName.substring(0,1)}</AvatarFallback>
             </Avatar>
             <span>By {list.userName}</span>
@@ -41,7 +41,7 @@ export function ListCard({ list }: ListCardProps) {
           <div className="grid grid-cols-4 gap-1 h-20 mb-3">
             {coverImages.map((src, index) => (
               <div key={index} className="relative aspect-[2/3] bg-muted rounded-sm overflow-hidden">
-                <Image src={src} alt={`Book cover ${index+1}`} layout="fill" objectFit="cover" data-ai-hint="book abstract"/>
+                <Image src={src} alt={`Book cover ${index+1}`} layout="fill" objectFit="cover" />
               </div>
             ))}
             {/* Fill remaining slots if less than 4 books */}

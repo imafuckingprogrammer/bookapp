@@ -33,7 +33,7 @@ export default function ProfilePage() {
         <CardHeader className="bg-gradient-to-br from-primary/20 via-background to-background p-6 md:p-8">
           <div className="flex flex-col md:flex-row items-center space-y-4 md:space-y-0 md:space-x-6">
             <Avatar className="h-24 w-24 md:h-32 md:w-32 border-4 border-background shadow-lg">
-              <AvatarImage src={user.avatarUrl} alt={user.name} data-ai-hint="person portrait" />
+              <AvatarImage src={user.avatarUrl} alt={user.name}  />
               <AvatarFallback className="text-4xl">{user.name.substring(0, 1)}</AvatarFallback>
             </Avatar>
             <div className="text-center md:text-left">

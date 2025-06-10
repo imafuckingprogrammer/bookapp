@@ -1,5 +1,5 @@
+
 import { BookCard } from '@/components/books/BookCard';
-import { PersonalizedRecommendationsForm } from '@/components/recommendations/PersonalizedRecommendationsForm';
 import { mockBooks } from '@/lib/mock-data';
 import { Button } from '@/components/ui/button';
 import Link from 'next/link';
@@ -45,9 +45,10 @@ export default function HomePage() {
         </div>
       </section>
 
-      <section className="py-12 bg-card rounded-xl shadow-lg">
-         <PersonalizedRecommendationsForm />
-      </section>
+      {/* 
+        The PersonalizedRecommendationsForm section has been removed.
+        You can add other sections here for new features.
+      */}
     </div>
   );
 }
