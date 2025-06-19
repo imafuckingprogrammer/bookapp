@@ -1,24 +1,45 @@
-
 import type { Comment } from '@/types';
+import { supabase } from '@/lib/supabaseClient';
 
 const API_BASE_URL = '/api'; // Adjust
 
 export async function likeComment(commentId: string): Promise<void> {
-  console.log(`[CommentService Stub] Liking comment ${commentId}`);
-  // await fetch(`${API_BASE_URL}/comments/${commentId}/like`, { method: 'POST', headers: { /* Auth */ } });
-  return Promise.resolve();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error('User not authenticated');
+
+  const { error } = await supabase
+    .from('likes')
+    .upsert({
+      user_id: user.id,
+      comment_id: commentId,
+    }, {
+      onConflict: 'user_id,comment_id',
+      ignoreDuplicates: true
+    });
+
+  if (error) throw error;
 }
 
 export async function unlikeComment(commentId: string): Promise<void> {
-  console.log(`[CommentService Stub] Unliking comment ${commentId}`);
-  // await fetch(`${API_BASE_URL}/comments/${commentId}/like`, { method: 'DELETE', headers: { /* Auth */ } });
-  return Promise.resolve();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error('User not authenticated');
+
+  const { error } = await supabase
+    .from('likes')
+    .delete()
+    .eq('user_id', user.id)
+    .eq('comment_id', commentId);
+
+  if (error) throw error;
 }
 
 export async function deleteComment(commentId: string): Promise<void> {
-  console.log(`[CommentService Stub] Deleting comment ${commentId}`);
-  // await fetch(`${API_BASE_URL}/comments/${commentId}`, { method: 'DELETE', headers: { /* Auth */ } });
-  return Promise.resolve();
+  const { error } = await supabase
+    .from('comments')
+    .delete()
+    .eq('id', commentId);
+
+  if (error) throw error;
 }
 
 // Add reply and edit comment would typically go into reviewService or listService

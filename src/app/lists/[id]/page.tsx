@@ -10,6 +10,7 @@ import { Separator } from '@/components/ui/separator';
 import { Textarea } from '@/components/ui/textarea';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
+import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { ThumbsUp, Share2, MessageCircle, Eye, EyeOff, ArrowDownAZ, ArrowUpAZ, Loader2, Edit3, Trash2 } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';

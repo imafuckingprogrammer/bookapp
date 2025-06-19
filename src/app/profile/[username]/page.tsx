@@ -34,10 +34,16 @@ import { useToast } from '@/hooks/use-toast';
 
 // TODO: Implement proper pagination for each tab's content
 
-export default function UserProfilePage({ params }: { params: { username: string } }) {
+export default function UserProfilePage({ params }: { params: Promise<{ username: string }> }) {
   const { userProfile: currentUserProfile, isAuthenticated, isLoading: authLoading } = useAuth();
   const { toast } = useToast();
-  const username = params.username;
+  const [username, setUsername] = useState<string>('');
+
+  useEffect(() => {
+    params.then(resolvedParams => {
+      setUsername(resolvedParams.username);
+    });
+  }, [params]);
 
   const [profile, setProfile] = useState<UserProfileType | null>(null);
   const [isLoadingProfile, setIsLoadingProfile] = useState(true);
@@ -56,6 +62,8 @@ export default function UserProfilePage({ params }: { params: { username: string
   const [tabDataLoading, setTabDataLoading] = useState(false);
 
   const fetchProfileData = useCallback(async () => {
+    if (!username) return; // Don't fetch if username not available yet
+    
     setIsLoadingProfile(true);
     try {
       const fetchedProfile = await getUserProfile(username);

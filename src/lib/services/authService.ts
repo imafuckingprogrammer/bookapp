@@ -1,25 +1,35 @@
-
-// This file would interact with your backend authentication API if not using Supabase client directly.
-// For Supabase, direct client usage is common as shown in AuthContext.
-// If you had custom backend auth, methods would go here.
+import { supabase } from '@/lib/supabaseClient';
 
 /**
- * Placeholder for auth service.
- * With Supabase, most auth interactions happen directly via the Supabase client library.
- * This file is kept for conceptual structure or if you extend with custom backend auth.
+ * Auth service for additional authentication functionality beyond the main AuthContext.
+ * Most auth operations are handled directly in AuthContext, but this provides
+ * utility functions for password reset, email verification, etc.
  */
 
-// Example:
-// export async function sendPasswordResetEmail(email: string): Promise<void> {
-//   console.log(`[AuthService Stub] Sending password reset for ${email}`);
-//   // const { error } = await supabase.auth.resetPasswordForEmail(email);
-//   // if (error) throw error;
-//   return Promise.resolve();
-// }
+export async function sendPasswordResetEmail(email: string): Promise<void> {
+  const { error } = await supabase.auth.resetPasswordForEmail(email, {
+    redirectTo: `${window.location.origin}/reset-password`,
+  });
+  if (error) throw error;
+}
 
-// export async function updateUserPassword(password: string): Promise<void> {
-//   console.log(`[AuthService Stub] Updating user password`);
-//   // const { error } = await supabase.auth.updateUser({ password });
-//   // if (error) throw error;
-//   return Promise.resolve();
-// }
+export async function updateUserPassword(password: string): Promise<void> {
+  const { error } = await supabase.auth.updateUser({ password });
+  if (error) throw error;
+}
+
+export async function updateUserEmail(email: string): Promise<void> {
+  const { error } = await supabase.auth.updateUser({ email });
+  if (error) throw error;
+}
+
+export async function resendEmailConfirmation(): Promise<void> {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user?.email) throw new Error('No user email found');
+  
+  const { error } = await supabase.auth.resend({
+    type: 'signup',
+    email: user.email,
+  });
+  if (error) throw error;
+}

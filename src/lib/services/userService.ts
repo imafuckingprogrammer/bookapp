@@ -1,68 +1,118 @@
-
-import type { UserProfile, PaginatedResponse, Book, Review, ListCollection, UserBookInteraction } from '@/types';
-
-const API_BASE_URL = '/api'; // Adjust
+import type { UserProfile, PaginatedResponse, UserBookInteraction, Review, ListCollection } from '@/types';
+import { supabase } from '@/lib/supabaseClient';
 
 export async function getUserProfile(username: string): Promise<UserProfile | null> {
-  console.log(`[UserService Stub] Fetching profile for username: ${username}`);
-  // const response = await fetch(`${API_BASE_URL}/users/${username}/profile`);
-  // if (!response.ok) {
-  //   if (response.status === 404) return null;
-  //   throw new Error('Failed to fetch user profile');
-  // }
-  // return response.json();
-  if (username === "alicereads") {
-     return {
-        id: "mock-user-id-alice",
-        username: "alicereads",
-        avatar_url: "https://placehold.co/128x128.png",
-        bio: "Avid reader, aspiring writer. Loves classics and sci-fi.",
-        created_at: "2023-01-15T10:00:00Z",
-        name: "Alice Wonderland",
-        follower_count: 150,
-        following_count: 75,
-        is_current_user_following: false, // Assume current user is not Alice for this stub
+  try {
+    const { data: { user } } = await supabase.auth.getUser();
+    
+    const { data, error } = await supabase
+      .from('user_profiles')
+      .select(`
+        *,
+        follower_count:follows!following_id(count),
+        following_count:follows!follower_id(count)
+      `)
+      .eq('username', username)
+      .single();
+
+    if (error) {
+      console.error('Error fetching profile:', error);
+      return null;
+    }
+
+    // Check if current user is following this profile
+    let is_current_user_following = false;
+    if (user && user.id !== data.id) {
+      const { data: followData } = await supabase
+        .from('follows')
+        .select('follower_id')
+        .eq('follower_id', user.id)
+        .eq('following_id', data.id)
+        .single();
+      
+      is_current_user_following = !!followData;
+    }
+
+    return {
+      ...data,
+      follower_count: data.follower_count?.[0]?.count || 0,
+      following_count: data.following_count?.[0]?.count || 0,
+      is_current_user_following,
     };
+  } catch (error) {
+    console.error('Error in getUserProfile:', error);
+    return null;
   }
-  return Promise.resolve(null);
 }
 
-export async function updateUserProfile(profileData: Partial<UserProfile>): Promise<UserProfile> {
-  console.log(`[UserService Stub] Updating user profile:`, profileData);
-  // const response = await fetch(`${API_BASE_URL}/user/profile`, {
-  //   method: 'PATCH',
-  //   headers: { 'Content-Type': 'application/json', /* Authorization header */ },
-  //   body: JSON.stringify(profileData),
-  // });
-  // if (!response.ok) throw new Error('Failed to update profile');
-  // return response.json();
-  const mockProfile: UserProfile = {
-    id: "current-user-id-stub",
-    username: "currentuser",
-    created_at: new Date().toISOString(),
-    ...profileData,
+export async function updateUserProfile(userId: string, profileData: Partial<Pick<UserProfile, 'name' | 'bio' | 'avatar_url'>>): Promise<UserProfile> {
+  const { data, error } = await supabase
+    .from('user_profiles')
+    .update(profileData)
+    .eq('id', userId)
+    .select(`
+      *,
+      follower_count:follows!following_id(count),
+      following_count:follows!follower_id(count)
+    `)
+    .single();
+
+  if (error) throw error;
+
+  return {
+    ...data,
+    follower_count: data.follower_count?.[0]?.count || 0,
+    following_count: data.following_count?.[0]?.count || 0,
   };
-  return Promise.resolve(mockProfile);
 }
 
 export async function searchUsers(query: string, page: number = 1, pageSize: number = 20): Promise<PaginatedResponse<UserProfile>> {
-  console.log(`[UserService Stub] Searching users for query: "${query}", page: ${page}`);
-  // const response = await fetch(`${API_BASE_URL}/search/users?q=${encodeURIComponent(query)}&page=${page}&pageSize=${pageSize}`);
-  // if (!response.ok) throw new Error('Failed to search users');
-  // return response.json();
-  return Promise.resolve({ items: [], total: 0, page, pageSize, totalPages: 0 });
+  const { data, error, count } = await supabase
+    .from('user_profiles')
+    .select('*', { count: 'exact' })
+    .or(`username.ilike.%${query}%,name.ilike.%${query}%`)
+    .order('username')
+    .range((page - 1) * pageSize, page * pageSize - 1);
+
+  if (error) throw error;
+
+  return {
+    items: data || [],
+    total: count || 0,
+    page,
+    pageSize,
+    totalPages: Math.ceil((count || 0) / pageSize),
+  };
 }
 
-export async function followUser(userIdToFollow: string): Promise<void> {
-  console.log(`[UserService Stub] Following user: ${userIdToFollow}`);
-  // await fetch(`${API_BASE_URL}/users/${userIdToFollow}/follow`, { method: 'POST', headers: { /* Auth */ } });
-  return Promise.resolve();
+export async function followUser(userId: string): Promise<void> {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error('User not authenticated');
+
+  const { error } = await supabase
+    .from('follows')
+    .upsert({
+      follower_id: user.id,
+      following_id: userId,
+    }, { 
+      onConflict: 'follower_id,following_id',
+      ignoreDuplicates: true 
+    });
+
+  if (error) throw error;
 }
 
-export async function unfollowUser(userIdToUnfollow: string): Promise<void> {
-  console.log(`[UserService Stub] Unfollowing user: ${userIdToUnfollow}`);
-  // await fetch(`${API_BASE_URL}/users/${userIdToUnfollow}/follow`, { method: 'DELETE', headers: { /* Auth */ } });
-  return Promise.resolve();
+export async function unfollowUser(userId: string): Promise<void> {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error('User not authenticated');
+
+  const { error } = await supabase
+    .from('follows')
+    .delete()
+    .eq('follower_id', user.id)
+    .eq('following_id', userId);
+
+  if (error) throw error;
 }
 
 export async function getUserFollowers(userId: string, page: number = 1, pageSize: number = 20): Promise<PaginatedResponse<UserProfile>> {
@@ -79,33 +129,162 @@ export async function getUserFollowing(userId: string, page: number = 1, pageSiz
 // --- User specific book/list/review data ---
 
 export async function getUserReadBooks(userId: string, page: number = 1, pageSize: number = 10): Promise<PaginatedResponse<UserBookInteraction>> {
-  console.log(`[UserService Stub] Fetching read books for user: ${userId}, page: ${page}`);
-  return Promise.resolve({ items: [], total: 0, page, pageSize, totalPages: 0 });
+  const { data, error, count } = await supabase
+    .from('user_book_interactions')
+    .select(`
+      *,
+      book:books(*)
+    `, { count: 'exact' })
+    .eq('user_id', userId)
+    .eq('is_read', true)
+    .order('read_date', { ascending: false })
+    .range((page - 1) * pageSize, page * pageSize - 1);
+
+  if (error) throw error;
+
+  return {
+    items: data || [],
+    total: count || 0,
+    page,
+    pageSize,
+    totalPages: Math.ceil((count || 0) / pageSize),
+  };
 }
 
 export async function getUserWatchlist(userId: string, page: number = 1, pageSize: number = 10): Promise<PaginatedResponse<UserBookInteraction>> {
-  console.log(`[UserService Stub] Fetching watchlist for user: ${userId}, page: ${page}`);
-  return Promise.resolve({ items: [], total: 0, page, pageSize, totalPages: 0 });
+  const { data, error, count } = await supabase
+    .from('user_book_interactions')
+    .select(`
+      *,
+      book:books(*)
+    `, { count: 'exact' })
+    .eq('user_id', userId)
+    .eq('is_on_watchlist', true)
+    .order('created_at', { ascending: false })
+    .range((page - 1) * pageSize, page * pageSize - 1);
+
+  if (error) throw error;
+
+  return {
+    items: data || [],
+    total: count || 0,
+    page,
+    pageSize,
+    totalPages: Math.ceil((count || 0) / pageSize),
+  };
 }
 
 export async function getUserLikedBooks(userId: string, page: number = 1, pageSize: number = 10): Promise<PaginatedResponse<UserBookInteraction>> {
-  console.log(`[UserService Stub] Fetching liked books for user: ${userId}, page: ${page}`);
-  return Promise.resolve({ items: [], total: 0, page, pageSize, totalPages: 0 });
+  const { data, error, count } = await supabase
+    .from('user_book_interactions')
+    .select(`
+      *,
+      book:books(*)
+    `, { count: 'exact' })
+    .eq('user_id', userId)
+    .eq('is_liked', true)
+    .order('created_at', { ascending: false })
+    .range((page - 1) * pageSize, page * pageSize - 1);
+
+  if (error) throw error;
+
+  return {
+    items: data || [],
+    total: count || 0,
+    page,
+    pageSize,
+    totalPages: Math.ceil((count || 0) / pageSize),
+  };
 }
 
 export async function getUserOwnedBooks(userId: string, page: number = 1, pageSize: number = 10): Promise<PaginatedResponse<UserBookInteraction>> {
-  console.log(`[UserService Stub] Fetching owned books for user: ${userId}, page: ${page}`);
-  return Promise.resolve({ items: [], total: 0, page, pageSize, totalPages: 0 });
+  const { data, error, count } = await supabase
+    .from('user_book_interactions')
+    .select(`
+      *,
+      book:books(*)
+    `, { count: 'exact' })
+    .eq('user_id', userId)
+    .eq('is_owned', true)
+    .order('created_at', { ascending: false })
+    .range((page - 1) * pageSize, page * pageSize - 1);
+
+  if (error) throw error;
+
+  return {
+    items: data || [],
+    total: count || 0,
+    page,
+    pageSize,
+    totalPages: Math.ceil((count || 0) / pageSize),
+  };
 }
 
 export async function getUserReviews(userId: string, page: number = 1, pageSize: number = 10): Promise<PaginatedResponse<Review>> {
-  console.log(`[UserService Stub] Fetching reviews by user: ${userId}, page: ${page}`);
-  return Promise.resolve({ items: [], total: 0, page, pageSize, totalPages: 0 });
+  const { data: { user } } = await supabase.auth.getUser();
+  
+  const { data, error, count } = await supabase
+    .from('reviews')
+    .select(`
+      *,
+      user:user_profiles(id, username, avatar_url),
+      book:books(id, title, cover_image_url)
+    `, { count: 'exact' })
+    .eq('user_id', userId)
+    .order('created_at', { ascending: false })
+    .range((page - 1) * pageSize, page * pageSize - 1);
+
+  if (error) throw error;
+
+  // Get like status for each review if user is authenticated
+  const reviewsWithLikeStatus = await Promise.all((data || []).map(async (review) => {
+    let current_user_has_liked = false;
+    if (user) {
+      const { data: likeData } = await supabase
+        .from('likes')
+        .select('user_id')
+        .eq('review_id', review.id)
+        .eq('user_id', user.id)
+        .single();
+      
+      current_user_has_liked = !!likeData;
+    }
+
+    return {
+      ...review,
+      current_user_has_liked
+    };
+  }));
+
+  return {
+    items: reviewsWithLikeStatus,
+    total: count || 0,
+    page,
+    pageSize,
+    totalPages: Math.ceil((count || 0) / pageSize),
+  };
 }
 
 export async function getUserLists(userId: string, page: number = 1, pageSize: number = 10): Promise<PaginatedResponse<ListCollection>> {
-  console.log(`[UserService Stub] Fetching lists by user: ${userId}, page: ${page}`);
-  return Promise.resolve({ items: [], total: 0, page, pageSize, totalPages: 0 });
+  const { data, error, count } = await supabase
+    .from('list_collections')
+    .select(`
+      *,
+      user:user_profiles(id, username, avatar_url)
+    `, { count: 'exact' })
+    .eq('user_id', userId)
+    .order('updated_at', { ascending: false })
+    .range((page - 1) * pageSize, page * pageSize - 1);
+
+  if (error) throw error;
+
+  return {
+    items: data || [],
+    total: count || 0,
+    page,
+    pageSize,
+    totalPages: Math.ceil((count || 0) / pageSize),
+  };
 }
 
 export async function getHomeFeed(page: number = 1, pageSize: number = 10): Promise<PaginatedResponse<any /* FeedItemType */>> {
@@ -122,4 +301,47 @@ export async function getNotifications(page: number = 1, pageSize: number = 10):
 export async function markNotificationsAsRead(notificationIds?: string[]): Promise<void> {
   console.log(`[UserService Stub] Marking notifications as read:`, notificationIds || 'all');
   return Promise.resolve();
+}
+
+export async function getUserByUsername(username: string): Promise<UserProfile | null> {
+  try {
+    const { data, error } = await supabase
+      .from('user_profiles')
+      .select(`
+        *,
+        follower_count:follows!following_id(count),
+        following_count:follows!follower_id(count)
+      `)
+      .eq('username', username)
+      .single();
+
+    if (error) {
+      console.error('Error fetching profile by username:', error);
+      return null;
+    }
+
+    return {
+      ...data,
+      follower_count: data.follower_count?.[0]?.count || 0,
+      following_count: data.following_count?.[0]?.count || 0,
+    };
+  } catch (error) {
+    console.error('Error in getUserByUsername:', error);
+    return null;
+  }
+}
+
+export async function checkIfFollowing(userId: string): Promise<boolean> {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return false;
+
+  const { data, error } = await supabase
+    .from('follows')
+    .select('follower_id')
+    .eq('follower_id', user.id)
+    .eq('following_id', userId)
+    .single();
+
+  if (error && error.code !== 'PGRST116') throw error;
+  return !!data;
 }

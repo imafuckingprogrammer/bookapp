@@ -1,5 +1,5 @@
-
 import type { Book, PaginatedResponse, Review, UserBookInteraction } from '@/types';
+import { supabase } from '@/lib/supabaseClient';
 
 const API_BASE_URL = '/api'; // Adjust if your API routes are different
 
@@ -9,164 +9,276 @@ const API_BASE_URL = '/api'; // Adjust if your API routes are different
  * This client-side stub will primarily use the existing Google Books API route.
  */
 export async function searchBooks(query: string, page: number = 1, pageSize: number = 20, filters?: Record<string,any>): Promise<PaginatedResponse<Book>> {
-  console.log(`[BookService Stub] Searching books for query: "${query}", page: ${page}, filters:`, filters);
-  // This would ideally call a backend endpoint that aggregates results.
-  // For now, let's use the existing Google Books API route.
+  if (!query.trim()) {
+    return { items: [], total: 0, page, pageSize, totalPages: 0 };
+  }
+
   try {
-    const response = await fetch(`/api/search/books?q=${encodeURIComponent(query)}&page=${page}&maxResults=${pageSize}`);
-    if (!response.ok) {
-      const errorData = await response.json();
-      throw new Error(errorData.error || `Request failed with status ${response.status}`);
-    }
-    const booksData: Book[] = await response.json(); // Assuming the current API returns Book[] directly
+    const params = new URLSearchParams({
+      q: query.trim(),
+      page: page.toString(),
+      maxResults: pageSize.toString(),
+    });
+
+    console.log('Searching for books with query:', query);
+    const response = await fetch(`/api/search/books?${params.toString()}`);
     
-    // Simulate pagination for the stub
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
+      console.error('Search API error:', errorData);
+      throw new Error(errorData.error || `Search failed: ${response.statusText}`);
+    }
+    
+    const items = await response.json();
+    console.log('Search returned:', items.length, 'items');
+    
     return {
-      items: booksData,
-      total: booksData.length > 0 ? booksData.length * (page + 1) : 0, // Mock total
+      items: items || [],
+      total: items.length,
       page,
       pageSize,
-      totalPages: booksData.length > 0 ? page + 1 : page, // Mock total pages
+      totalPages: Math.ceil(items.length / pageSize),
     };
   } catch (error) {
-    console.error('Failed to search books:', error);
+    console.error('Search books error:', error);
     throw error;
   }
 }
 
 export async function getBookDetails(bookId: string): Promise<Book | null> {
-  console.log(`[BookService Stub] Fetching details for bookId: ${bookId}`);
-  // In a real app, this would fetch from your backend which might get data from Google Books, Open Library, or your own DB.
-  // const response = await fetch(`${API_BASE_URL}/books/${bookId}`);
-  // if (!response.ok) {
-  //   if (response.status === 404) return null;
-  //   throw new Error('Failed to fetch book details');
-  // }
-  // return response.json();
-  
-  // Return a mock book if needed for UI development, otherwise null/error
-  // This is a placeholder. You'd need to fetch actual data.
-  // For demonstration, let's try to reuse parts of the search API logic if it makes sense,
-  // or have a dedicated get by ID if Google Books API supports it directly for detailed view.
-  // The existing /api/search/books returns a list. If you need a single book by its *Google* ID,
-  // the Google Books API is `https://www.googleapis.com/books/v1/volumes/{volumeId}`
-  
-  // Placeholder:
-  if (bookId === "1" || bookId === "2" || bookId === "3" || bookId === "4") { // Assuming these are valid IDs from old mock
-     return {
-        id: bookId,
-        title: `Sample Book ${bookId}`,
-        author: 'Sample Author',
-        coverImageUrl: 'https://placehold.co/300x450.png',
-        summary: 'This is a sample summary for the book. It provides a brief overview of the plot and themes explored within the narrative. Readers can expect an engaging story with well-developed characters and a compelling storyline that keeps them hooked until the very end.',
-        averageRating: Math.random() * 5,
-        genres: ['Fiction', 'Sample'],
-        publicationYear: 2023,
-        isbn: `978-00000000${bookId}`,
-    };
+  try {
+    // First try to get from our database
+    const { data: dbBook } = await supabase
+      .from('books')
+      .select('*')
+      .or(`id.eq.${bookId},google_book_id.eq.${bookId}`)
+      .single();
+
+    if (dbBook) {
+      return {
+        id: dbBook.id,
+        google_book_id: dbBook.google_book_id,
+        title: dbBook.title,
+        author: Array.isArray(dbBook.authors) ? dbBook.authors.join(', ') : dbBook.authors,
+        coverImageUrl: dbBook.cover_image_url,
+        summary: dbBook.summary,
+        averageRating: dbBook.average_rating,
+        genres: dbBook.genres || [],
+        publicationYear: dbBook.publication_year,
+        isbn: dbBook.isbn13 || dbBook.isbn10,
+      };
+    }
+
+    // Fallback to Google Books API
+    const GOOGLE_API_KEY = process.env.NEXT_PUBLIC_GOOGLE_BOOKS_API_KEY;
+    let url = `https://www.googleapis.com/books/v1/volumes/${bookId}`;
+    if (GOOGLE_API_KEY) url += `?key=${GOOGLE_API_KEY}`;
+
+    const response = await fetch(url);
+    if (!response.ok) return null;
+
+    const googleBook = await response.json();
+    // Format and cache this book (implementation similar to search API)
+    
+    return null; // Placeholder - implement Google Books formatting
+  } catch (error) {
+    console.error('Error fetching book details:', error);
+    return null;
   }
-  return null;
 }
 
 export async function getBookReviews(bookId: string, page: number = 1, pageSize: number = 10): Promise<PaginatedResponse<Review>> {
-  console.log(`[BookService Stub] Fetching reviews for bookId: ${bookId}, page: ${page}`);
-  // const response = await fetch(`${API_BASE_URL}/books/${bookId}/reviews?page=${page}&pageSize=${pageSize}`);
-  // if (!response.ok) throw new Error('Failed to fetch reviews');
-  // return response.json();
-  return Promise.resolve({ items: [], total: 0, page, pageSize, totalPages: 0 });
+  const { data: { user } } = await supabase.auth.getUser();
+  
+  const { data, error, count } = await supabase
+    .from('reviews')
+    .select(`
+      *,
+      user:user_profiles(id, username, avatar_url),
+      book:books(id, title, cover_image_url)
+    `, { count: 'exact' })
+    .eq('book_id', bookId)
+    .order('created_at', { ascending: false })
+    .range((page - 1) * pageSize, page * pageSize - 1);
+
+  if (error) throw error;
+
+  // Get like status for each review if user is authenticated
+  const reviewsWithLikeStatus = await Promise.all((data || []).map(async (review) => {
+    let current_user_has_liked = false;
+    if (user) {
+      const { data: likeData } = await supabase
+        .from('likes')
+        .select('user_id')
+        .eq('review_id', review.id)
+        .eq('user_id', user.id)
+        .single();
+      
+      current_user_has_liked = !!likeData;
+    }
+
+    return {
+      ...review,
+      current_user_has_liked
+    };
+  }));
+
+  return {
+    items: reviewsWithLikeStatus,
+    total: count || 0,
+    page,
+    pageSize,
+    totalPages: Math.ceil((count || 0) / pageSize),
+  };
 }
 
 export async function addBookReview(bookId: string, rating: number, reviewText?: string): Promise<Review> {
-  console.log(`[BookService Stub] Adding review for bookId: ${bookId}`, { rating, reviewText });
-  // const response = await fetch(`${API_BASE_URL}/books/${bookId}/reviews`, {
-  //   method: 'POST',
-  //   headers: { 'Content-Type': 'application/json', /* Authorization header */ },
-  //   body: JSON.stringify({ rating, review_text: reviewText }),
-  // });
-  // if (!response.ok) throw new Error('Failed to add review');
-  // return response.json();
-  const mockReview: Review = {
-    id: `review-${Date.now()}`,
-    user_id: "current-user-id-stub", // from auth context
-    book_id: bookId,
-    rating,
-    review_text: reviewText,
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
-    like_count: 0,
-    comment_count: 0,
-    current_user_has_liked: false,
-    user: { id: "current-user-id-stub", username: "currentuser", created_at: new Date().toISOString() },
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error('User not authenticated');
+
+  const { data, error } = await supabase
+    .from('reviews')
+    .upsert({
+      user_id: user.id,
+      book_id: bookId,
+      rating,
+      review_text: reviewText,
+    }, { 
+      onConflict: 'user_id,book_id' 
+    })
+    .select(`
+      *,
+      user:user_profiles(id, username, avatar_url),
+      book:books(id, title, cover_image_url)
+    `)
+    .single();
+
+  if (error) throw error;
+  
+  return {
+    ...data,
+    current_user_has_liked: false
   };
-  return Promise.resolve(mockReview);
 }
 
-export async function updateUserBookInteraction(bookId: string, interaction: Partial<Omit<UserBookInteraction, 'user_id' | 'book_id' | 'created_at' | 'updated_at'>>): Promise<UserBookInteraction> {
-  console.log(`[BookService Stub] Updating interaction for book ${bookId}:`, interaction);
-  // const response = await fetch(`${API_BASE_URL}/user/interactions/books/${bookId}`, {
-  //   method: 'PATCH', // or POST
-  //   headers: { 'Content-Type': 'application/json', /* Authorization header */ },
-  //   body: JSON.stringify(interaction),
-  // });
-  // if (!response.ok) throw new Error('Failed to update book interaction');
-  // return response.json();
-  const mockInteraction: UserBookInteraction = {
-    user_id: "current-user-id-stub",
-    book_id: bookId,
-    ...interaction,
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
-  };
-  return Promise.resolve(mockInteraction);
+export async function updateUserBookInteraction(bookId: string, interaction: Partial<UserBookInteraction>): Promise<UserBookInteraction> {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error('User not authenticated');
+
+  const { data, error } = await supabase
+    .from('user_book_interactions')
+    .upsert({
+      user_id: user.id,
+      book_id: bookId,
+      ...interaction,
+    })
+    .select()
+    .single();
+
+  if (error) throw error;
+  return data;
 }
 
 export async function getUserBookInteraction(bookId: string): Promise<UserBookInteraction | null> {
-  console.log(`[BookService Stub] Getting interaction for book ${bookId}`);
-  // const response = await fetch(`${API_BASE_URL}/user/interactions/books/${bookId}`, {
-  //   headers: { /* Authorization header */ },
-  // });
-  // if (!response.ok) {
-  //   if (response.status === 404) return null;
-  //   throw new Error('Failed to get book interaction');
-  // }
-  // return response.json();
-  
-  // Return a mock interaction if needed for UI development
-  return Promise.resolve(null); // Or a mock object
+  try {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return null;
+
+    const { data, error } = await supabase
+      .from('user_book_interactions')
+      .select('*')
+      .eq('user_id', user.id)
+      .eq('book_id', bookId)
+      .single();
+
+    if (error && error.code !== 'PGRST116') throw error;
+    return data;
+  } catch (error) {
+    console.error('Error fetching user interaction:', error);
+    return null;
+  }
 }
 
 // Add more functions as needed: likeBook, unlikeBook, etc.
 // These would typically be part of updateUserBookInteraction or dedicated endpoints.
 
 export async function likeBook(bookId: string): Promise<void> {
-    console.log(`[BookService Stub] Liking book ${bookId}`);
-    // await fetch(`${API_BASE_URL}/books/${bookId}/like`, { method: 'POST', headers: { /* Auth */ } });
-    return Promise.resolve();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error('User not authenticated');
+
+  const { error } = await supabase
+    .from('user_book_interactions')
+    .upsert({
+      user_id: user.id,
+      book_id: bookId,
+      is_liked: true,
+    });
+
+  if (error) throw error;
 }
 
 export async function unlikeBook(bookId: string): Promise<void> {
-    console.log(`[BookService Stub] Unliking book ${bookId}`);
-    // await fetch(`${API_BASE_URL}/books/${bookId}/like`, { method: 'DELETE', headers: { /* Auth */ } });
-    return Promise.resolve();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error('User not authenticated');
+
+  const { error } = await supabase
+    .from('user_book_interactions')
+    .upsert({
+      user_id: user.id,
+      book_id: bookId,
+      is_liked: false,
+    });
+
+  if (error) throw error;
 }
 
 export async function getPopularBooks(limit: number = 5): Promise<Book[]> {
-  console.log(`[BookService Stub] Fetching ${limit} popular books`);
-  // This would call your backend endpoint for popular books.
-  // For now, returning an empty array or minimal mock.
-  const sampleBook: Book = {
-    id: 'popular-1',
-    title: 'Popular Book Title',
-    author: 'Famous Author',
-    coverImageUrl: 'https://placehold.co/300x450.png',
-    summary: 'A very popular book.',
-    averageRating: 4.5,
-  };
-  return Promise.resolve(Array(limit).fill(null).map((_, i) => ({...sampleBook, id: `popular-${i+1}`, title: `Popular Book ${i+1}`})));
+  const { data, error } = await supabase
+    .from('books')
+    .select('*')
+    .order('average_rating', { ascending: false })
+    .limit(limit);
+
+  if (error) throw error;
+
+  return (data || []).map(book => ({
+    id: book.id,
+    google_book_id: book.google_book_id,
+    title: book.title,
+    author: Array.isArray(book.authors) ? book.authors.join(', ') : book.authors,
+    coverImageUrl: book.cover_image_url,
+    summary: book.summary,
+    averageRating: book.average_rating,
+    genres: book.genres || [],
+    publicationYear: book.publication_year,
+    isbn: book.isbn13 || book.isbn10,
+  }));
 }
 
 // Similarly for recently_reviewed_books, new_releases etc. for the homepage.
 export async function getRecentlyReviewedBooks(limit: number = 4): Promise<Book[]> {
-  console.log(`[BookService Stub] Fetching ${limit} recently reviewed books`);
-  return Promise.resolve([]); // Placeholder
+  const { data, error } = await supabase
+    .from('reviews')
+    .select(`
+      book:books(*)
+    `)
+    .order('created_at', { ascending: false })
+    .limit(limit);
+
+  if (error) throw error;
+
+  return (data || [])
+    .filter((item: any) => item.book)
+    .map((item: any) => ({
+      id: item.book.id,
+      google_book_id: item.book.google_book_id,
+      title: item.book.title,
+      author: Array.isArray(item.book.authors) ? item.book.authors.join(', ') : item.book.authors,
+      coverImageUrl: item.book.cover_image_url,
+      summary: item.book.summary,
+      averageRating: item.book.average_rating,
+      genres: item.book.genres || [],
+      publicationYear: item.book.publication_year,
+      isbn: item.book.isbn13 || item.book.isbn10,
+    }));
 }

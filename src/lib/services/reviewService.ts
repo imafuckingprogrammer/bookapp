@@ -1,78 +1,214 @@
-
 import type { Review, Comment, PaginatedResponse } from '@/types';
+import { supabase } from '@/lib/supabaseClient';
 
 const API_BASE_URL = '/api'; // Adjust
 
 export async function getReviewDetails(reviewId: string): Promise<Review | null> {
-  console.log(`[ReviewService Stub] Fetching details for reviewId: ${reviewId}`);
-  // const response = await fetch(`${API_BASE_URL}/reviews/${reviewId}`);
-  // if (!response.ok) {
-  //   if (response.status === 404) return null;
-  //   throw new Error('Failed to fetch review details');
-  // }
-  // return response.json();
-  return Promise.resolve(null); // Placeholder
+  const { data: { user } } = await supabase.auth.getUser();
+  
+  // First get the basic review data
+  const { data: reviewData, error: reviewError } = await supabase
+    .from('reviews')
+    .select(`
+      *,
+      user:user_profiles(id, username, avatar_url),
+      book:books(id, title, cover_image_url)
+    `)
+    .eq('id', reviewId)
+    .single();
+
+  if (reviewError && reviewError.code !== 'PGRST116') throw reviewError;
+  if (!reviewData) return null;
+
+  // Check if current user has liked this review (if authenticated)
+  let current_user_has_liked = false;
+  if (user) {
+    const { data: likeData } = await supabase
+      .from('likes')
+      .select('user_id')
+      .eq('review_id', reviewId)
+      .eq('user_id', user.id)
+      .single();
+    
+    current_user_has_liked = !!likeData;
+  }
+
+  return {
+    ...reviewData,
+    current_user_has_liked
+  };
 }
 
 export async function updateReview(reviewId: string, rating: number, reviewText?: string): Promise<Review> {
-  console.log(`[ReviewService Stub] Updating review ${reviewId}:`, { rating, reviewText });
-  // const response = await fetch(`${API_BASE_URL}/reviews/${reviewId}`, {
-  //   method: 'PATCH',
-  //   headers: { 'Content-Type': 'application/json', /* Authorization header */ },
-  //   body: JSON.stringify({ rating, review_text: reviewText }),
-  // });
-  // if (!response.ok) throw new Error('Failed to update review');
-  // return response.json();
-  const mockReview: Review = {
-    id: reviewId,
-    user_id: "current-user-id-stub",
-    book_id: "book-id-stub",
-    rating,
-    review_text: reviewText,
-    created_at: new Date().toISOString(), // Should be original creation date
-    updated_at: new Date().toISOString(),
-    like_count: 0, // Should be existing like count
-    current_user_has_liked: false, // Should be existing status
-  };
-  return Promise.resolve(mockReview);
+  const { data, error } = await supabase
+    .from('reviews')
+    .update({
+      rating,
+      review_text: reviewText,
+    })
+    .eq('id', reviewId)
+    .select(`
+      *,
+      user:user_profiles(id, username, avatar_url),
+      book:books(id, title, cover_image_url)
+    `)
+    .single();
+
+  if (error) throw error;
+  return data;
 }
 
 export async function deleteReview(reviewId: string): Promise<void> {
-  console.log(`[ReviewService Stub] Deleting review: ${reviewId}`);
-  // await fetch(`${API_BASE_URL}/reviews/${reviewId}`, { method: 'DELETE', headers: { /* Auth */ } });
-  return Promise.resolve();
+  const { error } = await supabase
+    .from('reviews')
+    .delete()
+    .eq('id', reviewId);
+
+  if (error) throw error;
 }
 
 export async function likeReview(reviewId: string): Promise<void> {
-  console.log(`[ReviewService Stub] Liking review ${reviewId}`);
-  // await fetch(`${API_BASE_URL}/reviews/${reviewId}/like`, { method: 'POST', headers: { /* Auth */ } });
-  return Promise.resolve();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error('User not authenticated');
+
+  const { error } = await supabase
+    .from('likes')
+    .upsert({
+      user_id: user.id,
+      review_id: reviewId,
+    }, {
+      onConflict: 'user_id,review_id',
+      ignoreDuplicates: true
+    });
+
+  if (error) throw error;
 }
 
 export async function unlikeReview(reviewId: string): Promise<void> {
-  console.log(`[ReviewService Stub] Unliking review ${reviewId}`);
-  // await fetch(`${API_BASE_URL}/reviews/${reviewId}/like`, { method: 'DELETE', headers: { /* Auth */ } });
-  return Promise.resolve();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error('User not authenticated');
+
+  const { error } = await supabase
+    .from('likes')
+    .delete()
+    .eq('user_id', user.id)
+    .eq('review_id', reviewId);
+
+  if (error) throw error;
+}
+
+// Helper function to fetch replies recursively
+async function fetchCommentReplies(commentId: string, user: any): Promise<Comment[]> {
+  const { data, error } = await supabase
+    .from('comments')
+    .select(`
+      *,
+      user:user_profiles(id, username, avatar_url)
+    `)
+    .eq('parent_comment_id', commentId)
+    .order('created_at', { ascending: true });
+
+  if (error) return [];
+
+  // Get like status for each reply
+  const repliesWithLikeStatus = await Promise.all((data || []).map(async (reply) => {
+    let current_user_has_liked = false;
+    if (user) {
+      const { data: likeData } = await supabase
+        .from('likes')
+        .select('user_id')
+        .eq('comment_id', reply.id)
+        .eq('user_id', user.id)
+        .single();
+      
+      current_user_has_liked = !!likeData;
+    }
+
+    // Recursively fetch nested replies
+    const nestedReplies = await fetchCommentReplies(reply.id, user);
+
+    return {
+      ...reply,
+      current_user_has_liked,
+      replies: nestedReplies
+    };
+  }));
+
+  return repliesWithLikeStatus;
 }
 
 export async function getReviewComments(reviewId: string, page: number = 1, pageSize: number = 10): Promise<PaginatedResponse<Comment>> {
-  console.log(`[ReviewService Stub] Getting comments for review ${reviewId}`);
-  return Promise.resolve({ items: [], total: 0, page, pageSize, totalPages: 0 });
+  const { data: { user } } = await supabase.auth.getUser();
+  
+  const { data, error, count } = await supabase
+    .from('comments')
+    .select(`
+      *,
+      user:user_profiles(id, username, avatar_url)
+    `, { count: 'exact' })
+    .eq('review_id', reviewId)
+    .is('parent_comment_id', null)
+    .order('created_at', { ascending: false })
+    .range((page - 1) * pageSize, page * pageSize - 1);
+
+  if (error) throw error;
+
+  // Get like status and replies for each comment
+  const commentsWithLikeStatusAndReplies = await Promise.all((data || []).map(async (comment) => {
+    let current_user_has_liked = false;
+    if (user) {
+      const { data: likeData } = await supabase
+        .from('likes')
+        .select('user_id')
+        .eq('comment_id', comment.id)
+        .eq('user_id', user.id)
+        .single();
+      
+      current_user_has_liked = !!likeData;
+    }
+
+    // Fetch replies
+    const replies = await fetchCommentReplies(comment.id, user);
+
+    return {
+      ...comment,
+      current_user_has_liked,
+      replies
+    };
+  }));
+
+  return {
+    items: commentsWithLikeStatusAndReplies,
+    total: count || 0,
+    page,
+    pageSize,
+    totalPages: Math.ceil((count || 0) / pageSize),
+  };
 }
 
 export async function addCommentToReview(reviewId: string, text: string, parentCommentId?: string): Promise<Comment> {
-  console.log(`[ReviewService Stub] Adding comment to review ${reviewId}: "${text}" (reply to: ${parentCommentId})`);
-  const mockComment: Comment = {
-    id: `comment-${Date.now()}`,
-    user_id: "current-user-id-stub",
-    review_id: reviewId,
-    parent_comment_id: parentCommentId,
-    text,
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
-    like_count: 0,
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error('User not authenticated');
+
+  const { data, error } = await supabase
+    .from('comments')
+    .insert({
+      user_id: user.id,
+      review_id: reviewId,
+      parent_comment_id: parentCommentId,
+      text,
+    })
+    .select(`
+      *,
+      user:user_profiles(id, username, avatar_url)
+    `)
+    .single();
+
+  if (error) throw error;
+  
+  return {
+    ...data,
     current_user_has_liked: false,
-    user: { id: "current-user-id-stub", username: "currentuser", created_at: new Date().toISOString() },
+    replies: []
   };
-  return Promise.resolve(mockComment);
 }

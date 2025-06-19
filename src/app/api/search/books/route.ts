@@ -1,6 +1,6 @@
-
-import type { Book } from '@/types';
 import { NextResponse, type NextRequest } from 'next/server';
+import type { Book } from '@/types';
+import { supabase } from '@/lib/supabaseClient';
 
 const GOOGLE_BOOKS_API_URL = 'https://www.googleapis.com/books/v1/volumes';
 // const OPEN_LIBRARY_SEARCH_URL = 'https://openlibrary.org/search.json'; // Example for Open Library
@@ -8,7 +8,32 @@ const GOOGLE_BOOKS_API_URL = 'https://www.googleapis.com/books/v1/volumes';
 // It's recommended to use an API key for Google Books API for better quota and reliability.
 const GOOGLE_API_KEY = process.env.GOOGLE_BOOKS_API_KEY;
 
-// Helper function to transform Google Books API item to our Book type
+// BookTracker's image optimization
+function getOptimizedBookCoverUrl(imageLinks?: { [key: string]: string }): string | null {
+  if (!imageLinks) return null;
+  
+  const imageTypes = ['extraLarge', 'large', 'medium', 'small', 'thumbnail'];
+  let imageUrl = null;
+  
+  for (const type of imageTypes) {
+    if (imageLinks[type]) {
+      imageUrl = imageLinks[type];
+      break;
+    }
+  }
+  
+  if (imageUrl) {
+    imageUrl = imageUrl
+      .replace('http://', 'https://')
+      .replace('zoom=1', 'zoom=3')
+      .replace('&edge=curl', '')
+      .replace('&source=gbs_api', '');
+  }
+  
+  return imageUrl;
+}
+
+// Format for LibroVision's existing Book type
 function formatGoogleBook(item: any): Book {
   const volumeInfo = item.volumeInfo || {};
   const imageLinks = volumeInfo.imageLinks || {};
@@ -21,30 +46,25 @@ function formatGoogleBook(item: any): Book {
     }
   }
 
-  let isbn;
-  if (volumeInfo.industryIdentifiers) {
-    const isbn13 = volumeInfo.industryIdentifiers.find((id: any) => id.type === 'ISBN_13');
-    if (isbn13) {
-      isbn = isbn13.identifier;
-    } else {
-      const isbn10 = volumeInfo.industryIdentifiers.find((id: any) => id.type === 'ISBN_10');
-      if (isbn10) {
-        isbn = isbn10.identifier;
-      }
-    }
-  }
+  const isbn10 = volumeInfo.industryIdentifiers?.find((id: any) => id.type === 'ISBN_10')?.identifier;
+  const isbn13 = volumeInfo.industryIdentifiers?.find((id: any) => id.type === 'ISBN_13')?.identifier;
+
+  // Clean description
+  const description = volumeInfo.description 
+    ? volumeInfo.description.replace(/<[^>]*>/g, '').trim()
+    : 'No description available.';
 
   return {
-    id: item.id, // Using Google's ID as the primary external ID for now
+    id: item.id,
     google_book_id: item.id,
-    title: volumeInfo.title || 'No title',
-    author: volumeInfo.authors ? volumeInfo.authors.join(', ') : 'Unknown author',
-    coverImageUrl: imageLinks.thumbnail || imageLinks.smallThumbnail || undefined, // Let client handle placeholder
-    summary: volumeInfo.description || 'No summary available.',
-    averageRating: volumeInfo.averageRating, // This is Google's rating, not app-wide
+    title: volumeInfo.title || 'Unknown Title',
+    author: volumeInfo.authors ? volumeInfo.authors.join(', ') : 'Unknown Author',
+    coverImageUrl: getOptimizedBookCoverUrl(volumeInfo.imageLinks) || undefined,
+    summary: description,
+    averageRating: volumeInfo.averageRating,
     genres: volumeInfo.categories || [],
     publicationYear,
-    isbn,
+    isbn: isbn13 || isbn10,
   };
 }
 
@@ -67,54 +87,95 @@ export async function GET(request: NextRequest) {
   const maxResultsParam = searchParams.get('maxResults') || '20';
 
   const page = parseInt(pageParam, 10);
-  const maxResults = parseInt(maxResultsParam, 10);
+  const maxResults = Math.min(parseInt(maxResultsParam, 10), 40);
   const startIndex = (page - 1) * maxResults;
 
-
-  if (!query) {
-    return NextResponse.json({ error: 'Search query is required' }, { status: 400 });
+  if (!query || query.trim().length < 1) {
+    return NextResponse.json({ error: 'Search query required' }, { status: 400 });
   }
 
   try {
-    // --- Google Books API Call ---
-    let googleBooksUrl = `${GOOGLE_BOOKS_API_URL}?q=${encodeURIComponent(query)}&startIndex=${startIndex}&maxResults=${maxResults}`;
-    if (GOOGLE_API_KEY) {
+    // BookTracker's enhanced query processing
+    let searchQuery = query.trim();
+    
+    // Build API URL with BookTracker's parameters
+    let googleBooksUrl = `${GOOGLE_BOOKS_API_URL}?q=${encodeURIComponent(searchQuery)}&startIndex=${startIndex}&maxResults=${maxResults}&printType=books&orderBy=relevance`;
+    
+    // Only add API key if it's properly configured (not the placeholder value)
+    if (GOOGLE_API_KEY && GOOGLE_API_KEY !== 'your_google_books_api_key_here') {
       googleBooksUrl += `&key=${GOOGLE_API_KEY}`;
     }
-    const googleResponse = await fetch(googleBooksUrl);
-    if (!googleResponse.ok) {
-      const errorData = await googleResponse.text();
-      console.error('Google Books API error:', errorData);
-      // Don't fail the whole request if one API fails, try the other or return partial.
-      // For now, if Google Books fails, we'll return an error.
-      return NextResponse.json({ error: `Google Books API error: ${googleResponse.statusText}` }, { status: googleResponse.status });
+
+    console.log('Searching Google Books with URL:', googleBooksUrl);
+
+    const response = await fetch(googleBooksUrl, {
+      headers: {
+        'Accept': 'application/json',
+        'User-Agent': 'LibroVision/1.0',
+      },
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('Google Books API error:', {
+        status: response.status,
+        statusText: response.statusText,
+        errorText,
+        url: googleBooksUrl
+      });
+      return NextResponse.json({ 
+        error: `API error: ${response.statusText}`,
+        details: errorText 
+      }, { status: response.status });
     }
-    const googleData = await googleResponse.json();
-    const booksFromGoogle: Book[] = googleData.items ? googleData.items.map(formatGoogleBook) : [];
 
-    // --- Open Library API Call (Conceptual) ---
-    // In a real scenario, you might fetch from Open Library as well and merge results.
-    // const openLibraryUrl = `${OPEN_LIBRARY_SEARCH_URL}?q=${encodeURIComponent(query)}&limit=${maxResults}&offset=${startIndex}`;
-    // const openLibraryResponse = await fetch(openLibraryUrl);
-    // let booksFromOpenLibrary: Partial<Book>[] = [];
-    // if (openLibraryResponse.ok) {
-    //   const olData = await openLibraryResponse.json();
-    //   booksFromOpenLibrary = olData.docs ? olData.docs.map(formatOpenLibraryBook) : [];
-    // } else {
-    //   console.warn('Open Library API error:', openLibraryResponse.statusText);
-    // }
-
-    // --- Merging and Deduplication Logic (Complex - Best handled by backend) ---
-    // For now, we'll just return Google Books results.
-    // A proper implementation would:
-    // 1. Assign internal IDs if books don't exist in your DB.
-    // 2. Merge data from multiple sources for the same book (e.g., more genres, summaries).
-    // 3. Deduplicate based on ISBN or a combination of title/author.
+    const googleData = await response.json();
+    console.log('Google Books API response:', {
+      totalItems: googleData.totalItems,
+      itemsCount: googleData.items?.length || 0
+    });
     
-    return NextResponse.json(booksFromGoogle);
+    if (!googleData.items || googleData.items.length === 0) {
+      console.log('No books found for query:', query);
+      return NextResponse.json([]);
+    }
+
+    // Format books and cache them
+    const formattedBooks: Book[] = googleData.items
+      .filter((book: any) => book.volumeInfo && book.volumeInfo.title)
+      .map(formatGoogleBook);
+
+    console.log('Formatted books count:', formattedBooks.length);
+
+    // Cache books in database for future use
+    for (const book of formattedBooks) {
+      try {
+        await supabase.from('books').upsert({
+          id: book.id,
+          google_book_id: book.google_book_id,
+          title: book.title,
+          authors: book.author ? [book.author] : [],
+          cover_image_url: book.coverImageUrl,
+          summary: book.summary,
+          publication_year: book.publicationYear,
+          isbn13: book.isbn?.length === 13 ? book.isbn : null,
+          isbn10: book.isbn?.length === 10 ? book.isbn : null,
+          genres: book.genres || [],
+          average_rating: book.averageRating || 0,
+          total_ratings: 0,
+        }, { onConflict: 'google_book_id' });
+      } catch (cacheError) {
+        console.warn('Cache error for book:', book.id, cacheError);
+      }
+    }
+
+    return NextResponse.json(formattedBooks);
+
   } catch (error) {
-    console.error('Failed to fetch books:', error);
-    const message = error instanceof Error ? error.message : 'Unknown error';
-    return NextResponse.json({ error: 'Failed to fetch books from external APIs', details: message }, { status: 500 });
+    console.error('Search error:', error);
+    return NextResponse.json({ 
+      error: 'Search failed',
+      details: error instanceof Error ? error.message : 'Unknown error'
+    }, { status: 500 });
   }
 }
